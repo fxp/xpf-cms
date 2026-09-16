@@ -18,7 +18,7 @@ function itemLlmsTxt(site: Site, it: Item, mdChars: number | null): string {
   const lines = [
     `# ${itemTitle(it)}`, "",
     `URL: ${absUrl(site, it)}`,
-    `Markdown: ${absUrl(site, it)}index.md`,
+    `Markdown: ${absUrl(site, it).replace(/\.html$/, ".md")}${it.page ? "" : "index.md"}`,
     `类型: ${site.config.verticals[it.type]?.label ?? it.type}${idLabel(it, site) ? " · " + idLabel(it, site) : ""}`,
     `日期: ${itemDate(it) ?? "?"}${m.last_updated && m.last_updated !== m.first_published ? ` · 更新 ${m.last_updated}` : ""}${m.current_version ? ` · v${m.current_version}` : ""}`,
     `语言: ${langs.join(", ")}${langs.includes("en") ? ` · 英文版 ${absUrl(site, it)}index.en.html` : ""}`,
@@ -41,16 +41,20 @@ export function buildMarkdownFace(site: Site, opts: BuildOpts): BuildStats {
   const byType = new Map<string, { it: Item; chars: number }[]>();
   for (const it of pub) {
     stats.items++;
-    const html = readFileSync(path.join(it.dir, "index.html"), "utf8");
+    const htmlPath = it.page ? path.join(site.root, it.page) : path.join(it.dir, "index.html");
+    const mdRel = it.page ? it.page.replace(/\.html$/, ".md") : path.join(it.relDir, "index.md");
+    const html = readFileSync(htmlPath, "utf8");
     const url = absUrl(site, it);
     const r = htmlToMarkdown(html, url);
     stats.byMethod[r.method] = (stats.byMethod[r.method] ?? 0) + 1;
     const m: any = it.meta ?? it.rawMeta ?? {};
     const md = fm({ title: itemTitle(it), url, type: it.type, id: idLabel(it, site) || undefined, date: itemDate(it), updated: m.last_updated !== m.first_published ? m.last_updated : undefined, version: m.current_version, lang: m.primary_language ?? "zh", languages: m.languages, tags: m.tags, category: m.category ?? undefined, summary: itemSummary(it) ? oneLine(itemSummary(it), 600) : undefined, source: `derived from index.html by xpf build (${r.method})`, generated: new Date().toISOString().slice(0, 10) }) + "\n" + r.markdown + "\n";
-    out(opts, path.join(it.relDir, "index.md"), md); stats.mdWritten++;
-    if (it.hasLlms && opts.skipExisting !== false) stats.llmsSkippedAuthored++; else { out(opts, path.join(it.relDir, "llms.txt"), itemLlmsTxt(site, it, r.chars)); stats.llmsWritten++; }
+    out(opts, mdRel, md); stats.mdWritten++;
+    if (it.page) { /* topic-child page: no meta.json of its own, Markdown sits beside the .html */ }
+    else if (it.hasLlms && opts.skipExisting !== false) stats.llmsSkippedAuthored++; else { out(opts, path.join(it.relDir, "llms.txt"), itemLlmsTxt(site, it, r.chars)); stats.llmsWritten++; }
     byType.set(it.type, [...(byType.get(it.type) ?? []), { it, chars: r.chars }]);
-    const body = r.chars > maxFull ? r.markdown.slice(0, maxFull) + `\n\n[… 截断，完整版见 ${url}index.md ]` : r.markdown;
+    const mdUrl = it.page ? url.replace(/\.html$/, ".md") : url + "index.md";
+    const body = r.chars > maxFull ? r.markdown.slice(0, maxFull) + `\n\n[… 截断，完整版见 ${mdUrl} ]` : r.markdown;
     full.push(`# ${itemTitle(it)}\n\nURL: ${url}\n日期: ${itemDate(it) ?? "?"} · 类型: ${it.type}${m.tags?.length ? " · 标签: " + m.tags.join(", ") : ""}\n\n${body}`);
   }
   // per-vertical llms.txt

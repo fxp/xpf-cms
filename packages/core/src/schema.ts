@@ -13,7 +13,7 @@ export const MetaV2 = z.object({
   visibility: z.enum(VISIBILITY).optional(),
   summary: z.string().nullable().optional(),
   source: z.string().optional(),
-  original_url: z.string().optional(),
+  original_url: z.string().nullable().optional(),
   current_version: z.number().int().min(1).optional(),
   first_published: date.optional(),
   last_updated: date.optional(),
