@@ -1,0 +1,19 @@
+{
+  "name": "xpf-cms",
+  "private": true,
+  "version": "0.1.0",
+  "description": "xpf-cms · Agent-first Artifact Management System for xiaopingfeng.com",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "xpf": "tsx packages/cli/src/xpf.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@types/node": "^22.10.0",
+    "@types/turndown": "^5.0.5",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

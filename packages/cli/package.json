@@ -1,0 +1,10 @@
+{
+  "name": "@xpf/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "xpf": "./src/xpf.ts" },
+  "dependencies": {
+    "@xpf/core": "workspace:*",
+    "commander": "^13.0.0"
+  }
+}

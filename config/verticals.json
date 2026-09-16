@@ -1,0 +1,26 @@
+{
+  "$comment": "xpf-cms 垂类配置（schema v2 §2.3）。dirs 相对站点仓库根；url_prefix 以 / 开头为主站路径，否则为完整 URL。",
+  "site": {
+    "name": "xiaopingfeng.com · 小平的IO",
+    "base_url": "https://xiaopingfeng.com",
+    "author": "冯小平",
+    "author_handle": "fxp007",
+    "default_language": "zh",
+    "description": "冯小平（fxp007）的个人站：每周 AI 行业分析（AI Buzzwords）、长文深潜（DeepDive）、独立研究、小工具、随笔、培训分享、可验证的预测、结构性产业图谱。中文为主，多数 DeepDive 有英文版。"
+  },
+  "verticals": {
+    "deepdive":    { "label": "DeepDive · 深潜",        "dirs": ["deepdive"],     "url_prefix": "/deepdive/",    "id_prefix": "DD", "counter": "deepdive",    "body_format": "html", "markdown_source": "derived", "in_manifest": true, "own_llms": true,  "description": "AI 行业关键事件与趋势的长文研究，一篇一个核心议题，有信源有日期。" },
+    "buzzwords":   { "label": "AI Buzzwords · 周报",     "dirs": ["buzzwords"],    "url_prefix": "/buzzwords/",   "id_prefix": "EP", "counter": "buzzwords",   "body_format": "html", "markdown_source": "derived", "in_manifest": true, "source": "buzzwords/data/index.json", "description": "每周 AI 情报分享的文字版：三条故事线、上期判断复盘、下周看点。" },
+    "research":    { "label": "Research · 研究",         "dirs": ["research", "deepdive"], "url_prefix": "/research/", "id_prefix": "RE", "counter": "research", "body_format": "html", "markdown_source": "derived", "in_manifest": true, "description": "独立研究项目：基准测试、从零实现的系统、安全研究，代码与数据通常随文链接。" },
+    "notes":       { "label": "Notes · 随笔",            "dirs": ["notes"],        "url_prefix": "/notes/",       "id_prefix": "NB", "counter": "notes",       "body_format": "html", "markdown_source": "derived", "in_manifest": true, "description": "生活、旅行、阅读随笔，含 2008–2022 WordPress 迁移归档。" },
+    "predictions": { "label": "Predictions · 预测",      "dirs": ["predictions"],  "url_prefix": "/predictions/", "id_prefix": "PR", "counter": "predictions", "body_format": "html", "markdown_source": "derived", "in_manifest": true, "description": "本人、朋友或 AI 做出的可验证预测，AI 定期联网核实并标注结论。" },
+    "howto":       { "label": "HowTo · 指南",            "dirs": ["howto"],        "url_prefix": "/howto/",       "id_prefix": "HT", "counter": "howto",       "body_format": "html", "markdown_source": "derived", "in_manifest": true, "description": "可照做的操作指南。" },
+    "apps":        { "label": "Apps · 工具",             "dirs": ["apps"],         "url_prefix": "/apps/",        "id_prefix": "AP", "counter": "apps",        "body_format": "html", "markdown_source": "derived", "in_manifest": true, "description": "小型 Web 工具；部分为静态页，部分 302 到独立部署的服务。" },
+    "skills":      { "label": "Skills · Agent 技能",     "dirs": ["apps/skills"],  "url_prefix": "/apps/skills/", "id_prefix": "SK", "counter": "skills",      "body_format": "html", "markdown_source": "derived", "in_manifest": true, "description": "自研或收藏的 Claude Code / Agent Skill，每条指向可安装的 SKILL.md。" },
+    "training":    { "label": "Training · AI 分享",      "dirs": ["training"],     "url_prefix": "/training/",    "id_prefix": "TR", "counter": null,          "body_format": "html", "markdown_source": "derived", "in_manifest": true, "indexed": false, "description": "对外培训与分享的幻灯片、讲义与参考资料清单。" },
+    "landscape":   { "label": "Landscape · 图谱",        "dirs": ["landscape"],    "url_prefix": "/landscape/",   "id_prefix": "LS", "counter": null,          "body_format": "html", "markdown_source": "derived", "in_manifest": true, "description": "持续更新的结构性产业图谱：Agent 开发栈、算力产业链、Agent 安全攻击面、AI 治理、行业信号流、芯片设计流程。" },
+    "live":        { "label": "Live · 持续观察",         "dirs": ["live"],         "url_prefix": "/live/",        "id_prefix": "LV", "counter": null,          "body_format": "html", "markdown_source": "derived", "in_manifest": true, "description": "持续更新的观察专题（如 NEO LAB 新型实验室系列）。" },
+    "group":       { "label": "Group · 读者群",          "dirs": ["group"],        "url_prefix": "/group/",       "id_prefix": "GR", "counter": null,          "body_format": "html", "markdown_source": "none",    "in_manifest": false, "description": "读者群入口 landing 页（含轮换二维码）。" },
+    "roam":        { "label": "Roam · 问野",             "dirs": [],               "url_prefix": "https://roam.xiaopingfeng.com/", "id_prefix": "RM", "counter": "roam", "federated": true, "manifest_url": "https://roam.xiaopingfeng.com/manifest.json", "in_manifest": true, "description": "AI Agent 自主完成任务的展示空间，独立站点。" }
+  }
+}
