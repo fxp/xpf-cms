@@ -6,6 +6,13 @@ import { itemState, type Site } from "./site.ts";
 export type Severity = "error" | "warning" | "info";
 export interface Finding { severity: Severity; code: string; ref: string; message: string; }
 
+/** Registry entries with no local directory *by design* — either an external link
+ * (e.g. a Skill hosted in someone else's repo) or a URL owned by a Cloudflare Worker
+ * route rather than a file in this repo. Recorded here (not in the site's own
+ * content-index.json) so the validator stays accurate without touching content the
+ * site's own tooling depends on. */
+const KNOWN_NO_DIR = new Set<string>(["apps/westniuworld", "skills/gongwen-gbt9704"]);
+
 export function validateSite(site: Site): { findings: Finding[]; stats: Record<string, number> } {
   const f: Finding[] = [];
   const push = (severity: Severity, code: string, ref: string, message: string) => f.push({ severity, code, ref, message });
@@ -30,10 +37,16 @@ export function validateSite(site: Site): { findings: Finding[]; stats: Record<s
   const stats: Record<string, number> = { items: site.items.length, public: 0, draft_on_main: 0, no_meta: 0, meta_error: 0, no_index_html: 0, no_markdown_face: 0, no_summary: 0, unregistered: 0, missing_dir: 0 };
   for (const it of site.items) {
     const v = site.config.verticals[it.type];
-    if (it.page) { push("warning", "registry-page-not-dir", it.ref, `registry slug resolves to a single page ${it.page} (topic_dir child); no meta.json of its own`); continue; }
+    if (it.page && !it.rawMeta) { push("warning", "registry-page-not-dir", it.ref, `registry slug resolves to a single page ${it.page} (topic_dir child); no meta.json of its own`); continue; }
+    if (KNOWN_NO_DIR.has(it.ref)) { push("info", "registry-known-external", it.ref, "no local directory by design (external link or Worker-route-owned URL)"); continue; }
+    if (it.registry?.status === "removed") { push("info", "registry-removed-tombstone", it.ref, it.registry.superseded_by ? `removed, superseded by ${it.registry.superseded_by}` : "removed, kept for history"); continue; }
     if (it.moved) { push("warning", "registry-moved", it.ref, `registry says ${it.type} but the page now lives at ${it.moved} (stale type/slug in content-index)`); continue; }
     if (it.redirect) { push("info", "registry-redirect-only", it.ref, `served by _redirects → ${it.redirect}; no local directory`); continue; }
-    if (!it.dir) { stats.missing_dir++; push("error", "registry-missing-dir", it.ref, `registered in content-index (id ${it.id}) but no directory, page or redirect found`); continue; }
+    if (!it.dir) {
+      const st = it.registry?.status;
+      if (st === "removed") { push("info", "registry-removed-no-dir", it.ref, "status=removed and no directory — tombstone, expected"); continue; }
+      stats.missing_dir++; push("error", "registry-missing-dir", it.ref, `registered in content-index (id ${it.id}) but no directory, page or redirect found`); continue;
+    }
     if (it.type !== "buzzwords" && !it.rawMeta) { stats.no_meta++; push("error", "meta-missing", it.ref, "index.meta.json missing"); }
     if (it.metaError) { stats.meta_error++; push("error", "meta-invalid", it.ref, it.metaError); }
     if (it.rawMeta && it.rawMeta.slug && it.rawMeta.slug !== path.basename(it.dir) && !it.rawMeta.topic_dir) push("warning", "slug-mismatch", it.ref, `meta.slug "${it.rawMeta.slug}" != dir "${path.basename(it.dir)}"`);

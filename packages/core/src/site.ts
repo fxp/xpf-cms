@@ -3,7 +3,7 @@ import path from "node:path";
 import { MetaV2, type Meta } from "./schema.ts";
 import type { XpfConfig } from "./config.ts";
 
-export interface RegistryEntry { id: string; type: string; slug: string; date?: string; title?: string; status?: string; ep?: number; }
+export interface RegistryEntry { id: string; type: string; slug: string; date?: string; title?: string; status?: string; ep?: number; superseded_by?: string; removed_date?: string; }
 export interface Item {
   ref: string;                 // "deepdive/foo" | "buzzwords/102"
   type: string;
@@ -43,6 +43,31 @@ function walkMetaDirs(base: string, maxDepth: number): string[] {
   return out;
 }
 
+/** Non-index "<basename>.meta.json" files: legacy topic-child articles that share
+ * their basename with a co-located "<basename>.html" instead of using index.html.
+ * e.g. live/neolab/andon-labs.meta.json + andon-labs.html, or
+ * deepdive/silicon-valley-politicians/karp-22-beliefs.meta.json + karp-22-beliefs.html. */
+function walkTopicChildMetaFiles(base: string, maxDepth: number): { file: string; dir: string; basename: string }[] {
+  const out: { file: string; dir: string; basename: string }[] = [];
+  const rec = (d: string, depth: number) => {
+    if (depth > maxDepth) return;
+    let ents: string[] = [];
+    try { ents = readdirSync(d); } catch { return; }
+    for (const e of ents) {
+      if (e.startsWith(".") || e === "node_modules" || e === "_data" || e === "slides" || e === "materials" || e === "assets" || e === "images" || e === "promo") continue;
+      const p = path.join(d, e);
+      let isDir = false; try { isDir = statSync(p).isDirectory(); } catch { continue; }
+      if (isDir) { rec(p, depth + 1); continue; }
+      if (e.endsWith(".meta.json") && e !== "index.meta.json") {
+        const basename = e.slice(0, -".meta.json".length);
+        if (existsSync(path.join(d, basename + ".html"))) out.push({ file: p, dir: d, basename });
+      }
+    }
+  };
+  rec(base, 0);
+  return out;
+}
+
 export function loadSite(root: string, config: XpfConfig): Site {
   const contentIndex = JSON.parse(readFileSync(path.join(root, "config/content-index.json"), "utf8"));
   const registryByRef = new Map<string, RegistryEntry>();
@@ -51,6 +76,7 @@ export function loadSite(root: string, config: XpfConfig): Site {
     registryByRef.set(key, it);
   }
   const items = new Map<string, Item>();
+  const topicChildScannedBases = new Set<string>();   // avoid rescanning a dir shared by two verticals (e.g. research also walks deepdive/)
   const urlFor = (type: string, slug: string) => {
     const v = config.verticals[type]; const pre = v?.url_prefix ?? `/${type}/`;
     return `${pre}${slug}/`;
@@ -61,7 +87,7 @@ export function loadSite(root: string, config: XpfConfig): Site {
     for (const d of v.dirs) {
       const base = path.join(root, d);
       if (!existsSync(base)) continue;
-      for (const dir of walkMetaDirs(base, 2)) {
+      for (const dir of walkMetaDirs(base, 3)) {
         let raw: any = null, meta: Meta | null = null, err: string | null = null;
         try { raw = JSON.parse(readFileSync(path.join(dir, "index.meta.json"), "utf8")); } catch (e: any) { err = `invalid JSON: ${e.message}`; }
         if (raw) {
@@ -82,6 +108,39 @@ export function loadSite(root: string, config: XpfConfig): Site {
           hasLlms: existsSync(path.join(dir, "llms.txt")),
           registry: registryByRef.get(ref) ?? null,
           id: registryByRef.get(ref)?.id ?? null,
+        });
+      }
+
+      // topic-child articles: <basename>.meta.json + <basename>.html, not under an index.* dir
+      // — skip dirs another vertical already scanned (e.g. research.dirs includes "deepdive", which deepdive itself owns)
+      if (topicChildScannedBases.has(base)) continue;
+      topicChildScannedBases.add(base);
+      for (const tc of walkTopicChildMetaFiles(base, 3)) {
+        let raw: any = null, meta: Meta | null = null, err: string | null = null;
+        try { raw = JSON.parse(readFileSync(tc.file, "utf8")); } catch (e: any) { err = `invalid JSON: ${e.message}`; }
+        if (!raw) continue;
+        const effType = raw.type ?? type;                     // legacy metas often omit type; inherit from vertical
+        const slugField: string = raw.slug ?? tc.basename;
+        const relDirFromBase = path.relative(base, tc.dir).split(path.sep).filter(Boolean).join("/");
+        // candidate registry refs, most to least specific — legacy data used inconsistent conventions
+        const candidates = [
+          slugField.includes("/") ? `${effType}/${slugField}` : null,                                   // e.g. "neolab/storyline" already namespaced
+          relDirFromBase ? `${effType}/${relDirFromBase}/${tc.basename}` : null,                         // dir-relative/basename
+          `${effType}/${slugField}`,                                                                     // plain slug as authored in meta.json
+        ].filter((x): x is string => !!x);
+        const ref = candidates.find(c => registryByRef.has(c)) ?? candidates[candidates.length - 1];
+        if (items.has(ref)) continue;
+        const r = MetaV2.safeParse({ ...raw, type: effType, slug: slugField.includes("/") ? tc.basename : slugField, status: raw.status ?? "published" });
+        if (r.success) meta = r.data; else err = r.error.issues.map(i => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+        // verified-real URL: CF Pages 308-strips ".html", so the reachable URL is exactly the file path minus extension
+        const urlPath = `${v.url_prefix}${relDirFromBase ? relDirFromBase + "/" : ""}${tc.basename}`;
+        items.set(ref, {
+          ref, type: effType, slug: tc.basename, dir: tc.dir, relDir: path.relative(root, tc.dir), urlPath,
+          meta, rawMeta: raw, metaError: err,
+          hasIndexHtml: true, hasIndexMd: existsSync(path.join(tc.dir, tc.basename + ".md")),
+          hasLlms: existsSync(path.join(tc.dir, tc.basename + ".llms.txt")),
+          registry: registryByRef.get(ref) ?? null, id: registryByRef.get(ref)?.id ?? null,
+          page: path.relative(root, path.join(tc.dir, tc.basename + ".html")),
         });
       }
     }

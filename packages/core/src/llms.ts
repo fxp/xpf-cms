@@ -15,13 +15,14 @@ function idLabel(it: Item, site: Site): string { const v = site.config.verticals
 function itemLlmsTxt(site: Site, it: Item, mdChars: number | null): string {
   const m: any = it.meta ?? it.rawMeta ?? {};
   const langs: string[] = m.languages ?? ["zh"];
+  const mdLink = it.page ? `${site.config.site.base_url}/${it.page.replace(/\.html$/, ".md")}` : `${absUrl(site, it)}index.md`;
   const lines = [
     `# ${itemTitle(it)}`, "",
     `URL: ${absUrl(site, it)}`,
-    `Markdown: ${absUrl(site, it).replace(/\.html$/, ".md")}${it.page ? "" : "index.md"}`,
+    `Markdown: ${mdLink}`,
     `类型: ${site.config.verticals[it.type]?.label ?? it.type}${idLabel(it, site) ? " · " + idLabel(it, site) : ""}`,
     `日期: ${itemDate(it) ?? "?"}${m.last_updated && m.last_updated !== m.first_published ? ` · 更新 ${m.last_updated}` : ""}${m.current_version ? ` · v${m.current_version}` : ""}`,
-    `语言: ${langs.join(", ")}${langs.includes("en") ? ` · 英文版 ${absUrl(site, it)}index.en.html` : ""}`,
+    `语言: ${langs.join(", ")}${langs.includes("en") ? ` · 英文版 ${it.page ? absUrl(site, it) + ".en.html" : absUrl(site, it) + "index.en.html"}` : ""}`,
     `作者: ${m.author ?? site.config.site.author}`,
   ];
   if (m.category) lines.push(`分类: ${m.category}`);
@@ -50,10 +51,10 @@ export function buildMarkdownFace(site: Site, opts: BuildOpts): BuildStats {
     const m: any = it.meta ?? it.rawMeta ?? {};
     const md = fm({ title: itemTitle(it), url, type: it.type, id: idLabel(it, site) || undefined, date: itemDate(it), updated: m.last_updated !== m.first_published ? m.last_updated : undefined, version: m.current_version, lang: m.primary_language ?? "zh", languages: m.languages, tags: m.tags, category: m.category ?? undefined, summary: itemSummary(it) ? oneLine(itemSummary(it), 600) : undefined, source: `derived from index.html by xpf build (${r.method})`, generated: new Date().toISOString().slice(0, 10) }) + "\n" + r.markdown + "\n";
     out(opts, mdRel, md); stats.mdWritten++;
-    if (it.page) { /* topic-child page: no meta.json of its own, Markdown sits beside the .html */ }
-    else if (it.hasLlms && opts.skipExisting !== false) stats.llmsSkippedAuthored++; else { out(opts, path.join(it.relDir, "llms.txt"), itemLlmsTxt(site, it, r.chars)); stats.llmsWritten++; }
+    const llmsRel = it.page ? it.page.replace(/\.html$/, ".llms.txt") : path.join(it.relDir, "llms.txt");
+    if (it.hasLlms && opts.skipExisting !== false) stats.llmsSkippedAuthored++; else { out(opts, llmsRel, itemLlmsTxt(site, it, r.chars)); stats.llmsWritten++; }
     byType.set(it.type, [...(byType.get(it.type) ?? []), { it, chars: r.chars }]);
-    const mdUrl = it.page ? url.replace(/\.html$/, ".md") : url + "index.md";
+    const mdUrl = it.page ? `${site.config.site.base_url}/${mdRel}` : url + "index.md";
     const body = r.chars > maxFull ? r.markdown.slice(0, maxFull) + `\n\n[… 截断，完整版见 ${mdUrl} ]` : r.markdown;
     full.push(`# ${itemTitle(it)}\n\nURL: ${url}\n日期: ${itemDate(it) ?? "?"} · 类型: ${it.type}${m.tags?.length ? " · 标签: " + m.tags.join(", ") : ""}\n\n${body}`);
   }
