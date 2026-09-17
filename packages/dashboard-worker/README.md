@@ -23,8 +23,10 @@ the gate becomes a no-op for exactly the files it's supposed to protect).
 ## One-time setup required in the Auth0 dashboard (I cannot do this myself —
 no Management API token was provided, only a Client ID)
 
+**Domain history**: this was `xpf-cms-dashboard.fxp007.workers.dev` until 2026-09-17, when a custom domain route was added — that also disabled the old `*.workers.dev` URL (Wrangler's default once explicit `routes` exist), so the Auth0 application needs the *new* URLs added below in addition to (or instead of) the old ones; the old workers.dev callback entry can stay registered harmlessly or be removed.
+
 In the Auth0 application's **Settings** page, add to:
-- **Allowed Callback URLs**: `https://xpf-cms-dashboard.fxp007.workers.dev/callback`
+- **Allowed Callback URLs**: `https://android-debug.xiaopingfeng.com/callback`
 - **Allowed Logout URLs**: `https://xpf-cms-dashboard.fxp007.workers.dev`
 - **Allowed Web Origins**: `https://xpf-cms-dashboard.fxp007.workers.dev`
 
