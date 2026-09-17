@@ -4,10 +4,10 @@
   "main": "src/worker.ts",
   "compatibility_date": "2026-09-01",
   // Adding an explicit "routes" entry disables the auto-generated *.workers.dev URL by
-  // default (Wrangler's own behavior, not something set here) — android-debug.xiaopingfeng.com
-  // is now the only way in. Add "workers_dev": true above if you ever want both.
+  // default (Wrangler's own behavior, not something set here) — cms.xiaopingfeng.com is
+  // now the only way in. Add "workers_dev": true above if you ever want both.
   "routes": [
-    { "pattern": "android-debug.xiaopingfeng.com", "custom_domain": true }
+    { "pattern": "cms.xiaopingfeng.com", "custom_domain": true }
   ],
   "assets": {
     "directory": "./public",

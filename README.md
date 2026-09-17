@@ -14,7 +14,7 @@ Packages: `core` (schema v2, site loader, validator, HTML→Markdown, llms gener
 
 ## Dashboard
 
-Live at **https://android-debug.xiaopingfeng.com**, gated by Auth0 login (`packages/dashboard-worker`) — see that package's README for the OAuth flow and the one manual step still needed in the Auth0 dashboard (Allowed Callback URLs) before login actually completes. Rebuild + redeploy:
+Live at **https://cms.xiaopingfeng.com**, gated by Auth0 login (`packages/dashboard-worker`) — see that package's README for the OAuth flow and the one manual step still needed in the Auth0 dashboard (Allowed Callback URLs) before login actually completes. Rebuild + redeploy:
 
 ```bash
 pnpm xpf build dashboard --out packages/dashboard-worker/public   # regenerate dashboard content
