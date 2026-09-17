@@ -14,13 +14,12 @@ Packages: `core` (schema v2, site loader, validator, HTML→Markdown, llms gener
 
 ## Dashboard
 
-Live at **https://xpf-cms-dashboard.fxp007.workers.dev** (no auth yet — see `packages/admin/README.md`). Redeploy after rebuilding:
+Live at **https://xpf-cms-dashboard.fxp007.workers.dev**, gated by Auth0 login (`packages/dashboard-worker`) — see that package's README for the OAuth flow and the one manual step still needed in the Auth0 dashboard (Allowed Callback URLs) before login actually completes. Rebuild + redeploy:
 
 ```bash
-pnpm xpf build dashboard --out /tmp/xpf-dashboard
-cd /tmp/xpf-dashboard
-CLOUDFLARE_API_KEY=<global key> CLOUDFLARE_EMAIL=<email> CLOUDFLARE_ACCOUNT_ID=<account id> \
-  npx wrangler pages deploy . --project-name=xpf-cms-dashboard
+pnpm xpf build dashboard --out packages/dashboard-worker/public   # regenerate dashboard content
+cd packages/dashboard-worker
+npx wrangler deploy                                                # picks up wrangler.jsonc + already-set secrets
 ```
 
-Not yet on a CI schedule — see the design doc's P2/P3 for when this moves to the real `cms Worker` with live D1 data and Access auth instead of a manually-redeployed static snapshot.
+Not yet on a CI schedule — see the design doc's P2/P3 for when this moves to the real `cms Worker` with live D1 data instead of a manually-redeployed static snapshot.
