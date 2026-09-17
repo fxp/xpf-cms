@@ -4,6 +4,7 @@
   "type": "module",
   "bin": { "xpf": "./src/xpf.ts" },
   "dependencies": {
+    "@xpf/admin": "workspace:*",
     "@xpf/core": "workspace:*",
     "commander": "^13.0.0"
   }

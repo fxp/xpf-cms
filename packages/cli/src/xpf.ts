@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { loadConfig, loadSite, validateSite, renderReport, buildMarkdownFace, patchAgentsTxt } from "@xpf/core";
+import { buildDashboard } from "@xpf/admin";
 
 const prog = new Command().name("xpf").description("xpf-cms · Agent-first Artifact Management System CLI").version("0.1.0");
 const siteOpt = (c: Command) => c.option("-s, --site <dir>", "site repo root", path.join(os.homedir(), "code/xiaopingfeng-site"));
@@ -37,6 +38,14 @@ siteOpt(build.command("llms").description("Markdown face: index.md, llms.txt per
     const stats = buildMarkdownFace(site, { outDir: path.resolve(o.out), only: o.only?.split(","), maxFullChars: parseInt(o.maxFull, 10), skipExisting: !o.overwriteLlms });
     const patched = patchAgentsTxt(site.root, { outDir: path.resolve(o.out) }, site.config.site.base_url);
     console.log(JSON.stringify({ ...stats, agentsTxtPatched: patched }, null, 2));
+  });
+
+siteOpt(build.command("dashboard").description("static ops dashboard: queues, verticals, infra snapshot, recent items"))
+  .requiredOption("-o, --out <dir>", "output dir (writes index.html, data.json, _headers)")
+  .option("--backups <dir>", "~/Backups/xpf-style directory to read infra snapshots from", path.join(os.homedir(), "Backups/xpf"))
+  .action((o) => {
+    const res = buildDashboard({ site: o.site, out: o.out, backups: o.backups });
+    console.log(JSON.stringify(res, null, 2));
   });
 
 prog.parseAsync();

@@ -24,8 +24,17 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  packages/admin:
+    dependencies:
+      '@xpf/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/cli:
     dependencies:
+      '@xpf/admin':
+        specifier: workspace:*
+        version: link:../admin
       '@xpf/core':
         specifier: workspace:*
         version: link:../core
