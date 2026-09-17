@@ -19,9 +19,9 @@
     // Anyone who can complete Auth0 login but isn't on this list gets a 403, not the dashboard.
     "ALLOWED_EMAILS": "fxp007@gmail.com"
   }
-  // Secrets (never in this file — set via `wrangler secret put <name>`):
+  // Secrets (never in this file — set via `wrangler secret put <name>`, both already set in prod):
   //   SESSION_SECRET       required. Signs the app's own session cookie after Auth0 login succeeds.
-  //   AUTH0_CLIENT_SECRET  optional. Only needed if the Auth0 application is a "Regular Web
-  //                        Application" with a required client secret rather than a public/SPA
-  //                        client using PKCE. Try without it first.
+  //   AUTH0_CLIENT_SECRET  required for this tenant — the Auth0 application is a confidential
+  //                        "Regular Web Application", not a public/SPA client, so the token
+  //                        exchange needs it alongside PKCE.
 }

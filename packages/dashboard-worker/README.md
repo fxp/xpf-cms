@@ -28,11 +28,9 @@ In the Auth0 application's **Settings** page, add to:
 - **Allowed Logout URLs**: `https://xpf-cms-dashboard.fxp007.workers.dev`
 - **Allowed Web Origins**: `https://xpf-cms-dashboard.fxp007.workers.dev`
 
-If the application is type **Regular Web Application** rather than **Single
-Page Application**, the token exchange will fail with `unauthorized_client`
-or `invalid_client` — either switch it to SPA (or set "Token Endpoint
-Authentication Method" to "None"), or give me the client secret to set as
-`AUTH0_CLIENT_SECRET` via `wrangler secret put`.
+The application is a **Regular Web Application** (confirmed), so
+`AUTH0_CLIENT_SECRET` is required and already set as a Worker secret — the
+token exchange sends it alongside the PKCE verifier.
 
 ## Deploy
 
