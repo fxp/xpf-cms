@@ -3,3 +3,6 @@ dist/
 .DS_Store
 reports/*.json
 /tmp/
+.wrangler/
+*.sqlite*
+packages/dashboard-worker/public/

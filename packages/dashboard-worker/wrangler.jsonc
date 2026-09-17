@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "xpf-cms-dashboard",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "none",
+    // Without this, requests matching a static file (/, /data.json) are served
+    // directly by the assets layer and never reach fetch() below — which would
+    // make the auth gate a no-op for exactly the files it's supposed to protect.
+    "run_worker_first": true
+  },
+  "vars": {
+    "AUTH0_DOMAIN": "dev-6fgppbfwiuc0f83t.us.auth0.com",
+    "AUTH0_CLIENT_ID": "FexYx5LAxWZBRHcOlDXUFN6I61DWHQei",
+    // Comma-separated allowlist checked against the Auth0 ID token's `email` claim.
+    // Anyone who can complete Auth0 login but isn't on this list gets a 403, not the dashboard.
+    "ALLOWED_EMAILS": "fxp007@gmail.com"
+  }
+  // Secrets (never in this file — set via `wrangler secret put <name>`):
+  //   SESSION_SECRET       required. Signs the app's own session cookie after Auth0 login succeeds.
+  //   AUTH0_CLIENT_SECRET  optional. Only needed if the Auth0 application is a "Regular Web
+  //                        Application" with a required client secret rather than a public/SPA
+  //                        client using PKCE. Try without it first.
+}
