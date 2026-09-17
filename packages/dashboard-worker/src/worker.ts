@@ -86,13 +86,15 @@ export default {
         { email: verified.claims.email, sub: verified.claims.sub, name: verified.claims.name, exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS },
         env.SESSION_SECRET
       );
-      return new Response(null, {
-        status: 302,
-        headers: {
-          Location: pkce.returnTo || "/",
-          "Set-Cookie": [serializeCookie(SESSION_COOKIE, session, { maxAge: SESSION_TTL_SECONDS }), clearCookie(PKCE_COOKIE)].join(", "),
-        },
-      });
+      // Two Set-Cookie headers are required here (new session + clear the spent PKCE cookie).
+      // HTTP allows repeated header lines with the same name for this; it does NOT allow
+      // comma-joining two cookies into one Set-Cookie value (cookie attributes like Expires
+      // legitimately contain commas, so nothing could split that back apart reliably) — the
+      // Headers object's .append() is what actually emits two separate response header lines.
+      const callbackHeaders = new Headers({ Location: pkce.returnTo || "/" });
+      callbackHeaders.append("Set-Cookie", serializeCookie(SESSION_COOKIE, session, { maxAge: SESSION_TTL_SECONDS }));
+      callbackHeaders.append("Set-Cookie", clearCookie(PKCE_COOKIE));
+      return new Response(null, { status: 302, headers: callbackHeaders });
     }
 
     if (url.pathname === "/logout") {
