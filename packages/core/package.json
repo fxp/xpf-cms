@@ -2,7 +2,10 @@
   "name": "@xpf/core",
   "version": "0.1.0",
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts",
+    "./edge": "./src/edge.ts"
+  },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
     "jsdom": "^26.0.0",

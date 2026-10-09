@@ -2,7 +2,7 @@
 // resulting tree is acceptable, and what the commit looks like. Pure and runtime-neutral —
 // the CLI (`xpf publish --dry-run`), CI and the cms Worker all call this same function.
 import { MetaV2 } from "./schema.ts";
-import type { XpfConfig } from "./config.ts";
+import type { XpfConfig } from "./config-types.ts";
 import { OverlayView, matchesAny, type Bundle, type BundleChange, type FileView } from "./bundle.ts";
 
 export type Verb = "add" | "update" | "remove";

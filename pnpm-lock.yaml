@@ -76,6 +76,25 @@ importers:
         specifier: ^4.0.0
         version: 4.132.0(@cloudflare/workers-types@4.20260702.1)(@types/node@22.20.2)
 
+  packages/worker:
+    dependencies:
+      '@xpf/core':
+        specifier: workspace:*
+        version: link:../core
+      hono:
+        specifier: ^4.13.0
+        version: 4.13.13
+      zod:
+        specifier: ^4.0.0
+        version: 4.6.5
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20250101.0
+        version: 4.20260702.1
+      wrangler:
+        specifier: ^4.0.0
+        version: 4.132.0(@cloudflare/workers-types@4.20260702.1)(@types/node@22.20.2)
+
 packages:
 
   '@asamuzakjp/css-color@3.2.0':
@@ -896,6 +915,10 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
+
+  hono@4.13.13:
+    resolution: {integrity: sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA==}
+    engines: {node: '>=16.9.0'}
 
   html-encoding-sniffer@4.0.0:
     resolution: {integrity: sha512-Y22oTqIU4uuPgEemfz7NDJz6OeKf12Lsu+QC+s3BVpda64lTiMYCyGwg5ki4vFxkMwQdeZDl2adZoqUgdFuTgQ==}
@@ -1869,6 +1892,8 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  hono@4.13.13: {}
 
   html-encoding-sniffer@4.0.0:
     dependencies:

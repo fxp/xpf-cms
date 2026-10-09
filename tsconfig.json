@@ -9,8 +9,15 @@
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["packages/*/src/**/*.ts"],
-  "exclude": ["packages/dashboard-worker/**"]
+  "include": [
+    "packages/*/src/**/*.ts"
+  ],
+  "exclude": [
+    "packages/dashboard-worker/**",
+    "packages/worker/**"
+  ]
 }

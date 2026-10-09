@@ -69,3 +69,21 @@ export function resolveItemDirFs(root: string, config: XpfConfig, type: string, 
   const candidates = type === "buzzwords" ? [`buzzwords/${slug}`] : v.dirs.map(d => `${d}/${slug}`);
   return candidates.find(c => existsSync(path.join(root, c, "index.html")) || existsSync(path.join(root, c, "index.meta.json"))) ?? null;
 }
+
+/** After a successful publish on main: make the local checkout equal to what the Worker committed, so a later
+ * `git pull` has nothing to fight with. Sent paths are staged at their remote content, then main fast-forwards.
+ * Returns an error message when the fast-forward could not be done (the caller prints the manual recipe). */
+export function syncAfterPublish(root: string, changes: BundleChange[], skip: Set<string> = new Set()): string | null {
+  try {
+    git(root, ["fetch", "-q", "origin", "main"]);
+    for (const c of changes) {
+      if (skip.has(c.path)) continue;
+      if (c.op === "put") git(root, ["checkout", "origin/main", "--", c.path], { allowFail: true });
+      else git(root, ["rm", "-q", "--cached", "--ignore-unmatch", "--", c.path], { allowFail: true });
+    }
+    git(root, ["merge", "--ff-only", "-q", "origin/main"]);
+    return null;
+  } catch (e: any) {
+    return String(e?.stderr ?? e?.message ?? e).trim().split("\n").slice(0, 3).join(" | ");
+  }
+}

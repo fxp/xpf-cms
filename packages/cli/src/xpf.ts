@@ -5,7 +5,8 @@ import path from "node:path";
 import os from "node:os";
 import { loadConfig, loadSite, validateSite, renderReport, buildMarkdownFace, patchAgentsTxt, planPublish, ownershipFor, isDerived, parseRef, type Verb, type PublishPlan } from "@xpf/core";
 import { buildDashboard, loadInfraSnapshot, saveInfraSnapshot, DEFAULT_INFRA_JSON } from "@xpf/admin";
-import { GitView, headSha, currentBranch, aheadBehind, collectWorktreeChanges, resolveItemDirFs } from "./worktree.ts";
+import { GitView, headSha, currentBranch, aheadBehind, collectWorktreeChanges, resolveItemDirFs, syncAfterPublish } from "./worktree.ts";
+import { loadClientConfig, postJson } from "./client.ts";
 
 const prog = new Command().name("xpf").description("xpf-cms · Agent-first Artifact Management System CLI").version("0.1.0");
 const siteOpt = (c: Command) => c.option("-s, --site <dir>", "site repo root", path.join(os.homedir(), "code/xiaopingfeng-site"));
@@ -101,9 +102,26 @@ async function runPublish(verb: Verb, ref: string, o: any) {
     if (plan.commit.subject) console.log(`  commit:\n${plan.commit.message.split("\n").map(l => "    " + l).join("\n")}`);
   }
   if (!plan.ok) { process.exitCode = 1; return; }
-  if (!o.dryRun) {
-    console.error("\nxpf publish can only dry-run for now: the cms Worker that performs the atomic commit is not deployed yet (milestone M2). Use --dry-run.");
-    process.exitCode = 2;
+
+  const intent = { summary: o.summary, actor: o.actor, calendar: !!o.calendar, also: o.also, itemDir: itemDir ?? undefined, placeholder: !!o.placeholder, derive: o.derive !== false };
+  const body = { ref, verb, intent, bundle: { base_sha: bundle.base_sha, changes: plan.changes }, branch: o.branch, dry_run: !!o.dryRun };
+  if (o.dryRun && !o.remote) return;                       // local-only dry run
+  const cfg = loadClientConfig();
+  if (!cfg.token) { console.error(`\nno API token: set $XPF_API_TOKEN or write it to ~/.config/xpf/token (chmod 600)`); process.exitCode = 2; return; }
+  const res = await postJson(cfg, "/api/publish", body);
+  const j = res.json;
+  if (res.status === 409) { console.error(`\n✗ conflict: ${j.message ?? j.error}\n  ${(j.conflicts ?? []).join("\n  ")}\n  fix: git pull --ff-only (stash first if needed), then re-run`); process.exitCode = 1; return; }
+  if (res.status === 422) { console.error(`\n✗ rejected by ${cfg.api}:`); for (const f of j.plan?.findings ?? []) console.error(`    ${f.severity === "error" ? "✗" : "!"} ${f.code}: ${f.message}`); process.exitCode = 1; return; }
+  if (res.status >= 400) { console.error(`\n✗ ${res.status} from ${cfg.api}: ${j.error ?? ""} ${j.detail ?? ""}`); process.exitCode = 1; return; }
+  if (o.dryRun) { console.log(`\n✓ server also accepts it (head ${String(j.head).slice(0, 8)}, branch ${j.branch})`); return; }
+
+  console.log(`\n✓ committed ${String(j.commit_sha).slice(0, 8)} on ${j.branch}  ${j.commit_url}`);
+  if (j.instance_id) console.log(`  pipeline ${j.instance_id} (deploy wait + verify + index): xpf status ${j.instance_id}`);
+  if (!o.branch) {
+    const hadForeign = plan.findings.some(f => f.code === "registry-foreign-entries");
+    const err = syncAfterPublish(root, plan.changes, hadForeign ? new Set([config.publish.registry]) : new Set());
+    if (err) console.error(`  ! local checkout not fast-forwarded (${err}).\n    run: git stash && git pull --ff-only && git stash pop`);
+    else console.log("  local checkout synced to origin/main");
   }
 }
 
@@ -118,8 +136,17 @@ for (const verb of ["publish", "update", "remove"] as const) {
     .option("--placeholder", "allow a non-published meta.status (howto 'coming soon')")
     .option("--no-derive", "omit the 'Derive: pending' trailer")
     .option("--dry-run", "validate and show the plan; do not publish")
+    .option("--remote", "with --dry-run: also ask the cms Worker to validate against the live branch head")
+    .option("--branch <name>", "publish to this branch instead of main (smoke tests; skips local sync)")
     .option("--json", "print the plan as JSON")
     .action((ref, o) => runPublish(v, ref, o));
 }
+
+siteOpt(prog.command("status <instance>").description("status of a publish pipeline instance (deploy wait, verify, index)"))
+  .action(async (instance) => {
+    const cfg = loadClientConfig();
+    const r = await fetch(`${cfg.api}/api/publish/${instance}`, { headers: { authorization: `Bearer ${cfg.token}` } });
+    console.log(JSON.stringify(await r.json(), null, 2));
+  });
 
 prog.parseAsync();

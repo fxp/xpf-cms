@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "xpf-cms",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "routes": [{ "pattern": "cms-api.xiaopingfeng.com", "custom_domain": true }],
+
+  "vars": {
+    "GITHUB_REPO": "fxp/xiaopingfeng-site",
+    // first entry is the default; others are auto-created from it (smoke-test sandbox)
+    "ALLOWED_BRANCHES": "main,xpf-smoke",
+    "SITE_BASE": "https://xiaopingfeng.com"
+  },
+
+  "d1_databases": [
+    { "binding": "DB", "database_name": "xpf-cms-db", "database_id": "c067226e-b98a-476b-b39c-3ecbcab17085", "migrations_dir": "migrations" }
+  ],
+  "kv_namespaces": [
+    { "binding": "MANIFEST", "id": "1abbf1c04d8e4a1ea0c5ea4185090a08" }
+  ],
+  "workflows": [
+    { "name": "xpf-publish-pipeline", "binding": "PUBLISH", "class_name": "PublishPipeline" }
+  ]
+
+  // Secrets (never in this file — `wrangler secret put <NAME>`):
+  //   GITHUB_TOKEN        fine-grained PAT (or GitHub App token) with Contents: read/write on GITHUB_REPO
+  //   XPF_API_TOKEN       bearer token the xpf CLI / CI sends
+  //   XPF_SIGNING_SECRET  HMAC key for Xpf-Sig commit trailers; the same value is the site repo's XPF_GATE_SECRET
+}
