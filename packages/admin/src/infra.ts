@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 export interface InfraSnapshot {
@@ -34,6 +34,21 @@ function countsFor(dir: string): Record<string, number> {
     "Fly apps": Array.isArray(fly) ? fly.length : 0,
     "Vercel projects": vercel?.projects?.length ?? 0,
   };
+}
+
+const EMPTY_INFRA: InfraSnapshot = { date: null, counts: {}, zones: [], workers: [], delta: null };
+
+/** Reads a snapshot previously written by saveInfraSnapshot() — the committed copy CI falls back to
+ * because it has no access to the local ~/Backups/xpf tree. Missing or malformed ⇒ empty snapshot. */
+export function loadInfraFromFile(file: string): InfraSnapshot {
+  const j = loadJson(file);
+  if (!j || typeof j !== "object") return EMPTY_INFRA;
+  return { ...EMPTY_INFRA, ...j };
+}
+
+export function saveInfraSnapshot(snap: InfraSnapshot, file: string): void {
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify(snap, null, 2) + "\n", "utf8");
 }
 
 /** Reads the two most recent ~/Backups/xpf/<date>/inventory/ snapshots (if present)

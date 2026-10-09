@@ -1,0 +1,373 @@
+{
+  "date": "20260916",
+  "counts": {
+    "GitHub repos": 160,
+    "Cloudflare zones": 8,
+    "Workers": 112,
+    "Pages projects": 7,
+    "KV namespaces": 16,
+    "D1 databases": 20,
+    "R2 buckets": 11,
+    "Fly apps": 18,
+    "Vercel projects": 11
+  },
+  "zones": [
+    "carbonleft.com",
+    "fengxiaoping.com",
+    "ln-s.run",
+    "vendling.ai",
+    "vendling.dev",
+    "vendling.sh",
+    "wangyihan.app",
+    "xiaopingfeng.com"
+  ],
+  "workers": [
+    {
+      "id": "adaptivemath-backend"
+    },
+    {
+      "id": "agent-native-crm"
+    },
+    {
+      "id": "agentos-host"
+    },
+    {
+      "id": "ai-recruiter"
+    },
+    {
+      "id": "ai-sales"
+    },
+    {
+      "id": "ai-sales-dashboard-proxy"
+    },
+    {
+      "id": "ai-sales-data-vault"
+    },
+    {
+      "id": "ai-sales-link-tracker"
+    },
+    {
+      "id": "anotherworld-events"
+    },
+    {
+      "id": "corpus-ask"
+    },
+    {
+      "id": "corpus-mcp"
+    },
+    {
+      "id": "deep-read"
+    },
+    {
+      "id": "demo-registry"
+    },
+    {
+      "id": "escapegate"
+    },
+    {
+      "id": "foreman"
+    },
+    {
+      "id": "foreman-staging"
+    },
+    {
+      "id": "formatprobe-worker"
+    },
+    {
+      "id": "gh-agicto-ollama-agent-crewai-search"
+    },
+    {
+      "id": "gh-apache-apisix"
+    },
+    {
+      "id": "gh-braincrew-lab-langgraph-mcp-agents"
+    },
+    {
+      "id": "gh-bravekingzhang-flutter_chat_box"
+    },
+    {
+      "id": "gh-cequence-io-openai-scala-client"
+    },
+    {
+      "id": "gh-cl-lau-sql-gpt"
+    },
+    {
+      "id": "gh-davila7-talk-to-gpt-3"
+    },
+    {
+      "id": "gh-davila7-youtube-gpt"
+    },
+    {
+      "id": "gh-dheera-scripts"
+    },
+    {
+      "id": "gh-digitallyinduced-ihp"
+    },
+    {
+      "id": "gh-docker-labs-ai-tools-for-devs"
+    },
+    {
+      "id": "gh-dwillowtree-diana"
+    },
+    {
+      "id": "gh-editor-code-assistant-eca"
+    },
+    {
+      "id": "gh-erxiansheng-gemininixiang"
+    },
+    {
+      "id": "gh-flyun-chatair"
+    },
+    {
+      "id": "gh-g0ldencybersec-sus_params"
+    },
+    {
+      "id": "gh-hrishikesh332-opencode"
+    },
+    {
+      "id": "gh-hwchase17-notion-qa"
+    },
+    {
+      "id": "gh-intitni-codeiumforxcode"
+    },
+    {
+      "id": "gh-intitni-copilotforxcode"
+    },
+    {
+      "id": "gh-jennyzzt-dgm"
+    },
+    {
+      "id": "gh-jipraks-yt-short-clipper"
+    },
+    {
+      "id": "gh-lambdua-openai4j"
+    },
+    {
+      "id": "gh-lianjiatech-bella-openapi"
+    },
+    {
+      "id": "gh-logseq-logseq"
+    },
+    {
+      "id": "gh-lollipopkit-flutter_gpt_box"
+    },
+    {
+      "id": "gh-lyihub-psydraw"
+    },
+    {
+      "id": "gh-math-inc-opengauss"
+    },
+    {
+      "id": "gh-mercurytechnologies-ada"
+    },
+    {
+      "id": "gh-metabase-metabase"
+    },
+    {
+      "id": "gh-minorjerry-webvoyager"
+    },
+    {
+      "id": "gh-mirego-accent"
+    },
+    {
+      "id": "gh-mylxsw-aidea"
+    },
+    {
+      "id": "gh-nextai-translator-raycast-openai-translator"
+    },
+    {
+      "id": "gh-olney1-chatgpt-openai-smart-speaker"
+    },
+    {
+      "id": "gh-openai-php-client"
+    },
+    {
+      "id": "gh-openai-php-laravel"
+    },
+    {
+      "id": "gh-opengvlab-interngpt"
+    },
+    {
+      "id": "gh-pallavag-claude-computer-use-macos"
+    },
+    {
+      "id": "gh-pdichone-vincibits-study-buddy-knwoledge-retrieval"
+    },
+    {
+      "id": "gh-plasma-umass-sqlwrite"
+    },
+    {
+      "id": "gh-promptengineer48-memgpt-autogen-llm"
+    },
+    {
+      "id": "gh-radareorg-r2ai"
+    },
+    {
+      "id": "gh-rsrohan99-presenter"
+    },
+    {
+      "id": "gh-shipclojure-simulflow"
+    },
+    {
+      "id": "gh-skywalkerdarren-chatweb"
+    },
+    {
+      "id": "gh-softwaremill-sttp-ai"
+    },
+    {
+      "id": "gh-tigerbeetle-tigerbeetle"
+    },
+    {
+      "id": "gh-timothymugayi-mychatbot"
+    },
+    {
+      "id": "gh-ucsb-ai-gea"
+    },
+    {
+      "id": "gh-yihong0618-tg_bing_dalle"
+    },
+    {
+      "id": "gp-simulator"
+    },
+    {
+      "id": "industry-chain-api"
+    },
+    {
+      "id": "intent-broker"
+    },
+    {
+      "id": "justintime"
+    },
+    {
+      "id": "knowling-api"
+    },
+    {
+      "id": "leaderboard-screen"
+    },
+    {
+      "id": "llm-demo"
+    },
+    {
+      "id": "mac-api-gateway"
+    },
+    {
+      "id": "manual-agent"
+    },
+    {
+      "id": "meshmind-hub"
+    },
+    {
+      "id": "shuozhi-web"
+    },
+    {
+      "id": "skillforge"
+    },
+    {
+      "id": "skillify-runtime"
+    },
+    {
+      "id": "the-fourth-chair"
+    },
+    {
+      "id": "ucp-vending-machine"
+    },
+    {
+      "id": "vend-agentic-inbox"
+    },
+    {
+      "id": "vend-anotherworld-bridge"
+    },
+    {
+      "id": "vending-game"
+    },
+    {
+      "id": "vending-identity-service"
+    },
+    {
+      "id": "vending-mcp"
+    },
+    {
+      "id": "vending-notify-gateway"
+    },
+    {
+      "id": "vending-payment-sandbox"
+    },
+    {
+      "id": "vending-status-dashboard"
+    },
+    {
+      "id": "vending-supply-chain"
+    },
+    {
+      "id": "vending-welfare-service"
+    },
+    {
+      "id": "vendling-adapter-youbao"
+    },
+    {
+      "id": "vendling-adapter-youbao-staging"
+    },
+    {
+      "id": "vendling-core"
+    },
+    {
+      "id": "vendling-core-staging"
+    },
+    {
+      "id": "vendling-docs"
+    },
+    {
+      "id": "vendling-face"
+    },
+    {
+      "id": "vendling-face-staging"
+    },
+    {
+      "id": "vendling-gateway"
+    },
+    {
+      "id": "vendling-pm-chat"
+    },
+    {
+      "id": "vendling-site"
+    },
+    {
+      "id": "vm-world"
+    },
+    {
+      "id": "walkthru-worker"
+    },
+    {
+      "id": "westniuworld"
+    },
+    {
+      "id": "xiaozhi-server"
+    },
+    {
+      "id": "xpf-apps-industry-chain"
+    },
+    {
+      "id": "xpf-llm60"
+    },
+    {
+      "id": "xpf-shortlinks"
+    },
+    {
+      "id": "xpf-todo"
+    },
+    {
+      "id": "zlab-reports"
+    }
+  ],
+  "delta": {
+    "GitHub repos": 10,
+    "Cloudflare zones": 8,
+    "Workers": 12,
+    "Pages projects": 0,
+    "KV namespaces": 0,
+    "D1 databases": 2,
+    "R2 buckets": 2,
+    "Fly apps": 0,
+    "Vercel projects": 0
+  }
+}

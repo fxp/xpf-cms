@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { loadConfig, loadSite, validateSite, renderReport, buildMarkdownFace, patchAgentsTxt } from "@xpf/core";
-import { buildDashboard } from "@xpf/admin";
+import { buildDashboard, loadInfraSnapshot, saveInfraSnapshot, DEFAULT_INFRA_JSON } from "@xpf/admin";
 
 const prog = new Command().name("xpf").description("xpf-cms · Agent-first Artifact Management System CLI").version("0.1.0");
 const siteOpt = (c: Command) => c.option("-s, --site <dir>", "site repo root", path.join(os.homedir(), "code/xiaopingfeng-site"));
@@ -43,9 +43,20 @@ siteOpt(build.command("llms").description("Markdown face: index.md, llms.txt per
 siteOpt(build.command("dashboard").description("static ops dashboard: queues, verticals, infra snapshot, recent items"))
   .requiredOption("-o, --out <dir>", "output dir (writes index.html, data.json, _headers)")
   .option("--backups <dir>", "~/Backups/xpf-style directory to read infra snapshots from", path.join(os.homedir(), "Backups/xpf"))
+  .option("--infra-json <file>", "committed infra snapshot used when --backups has none (CI)", DEFAULT_INFRA_JSON)
   .action((o) => {
-    const res = buildDashboard({ site: o.site, out: o.out, backups: o.backups });
+    const res = buildDashboard({ site: o.site, out: o.out, backups: o.backups, infraJson: o.infraJson });
     console.log(JSON.stringify(res, null, 2));
+  });
+
+build.command("infra").description("write the committed infra snapshot (data/infra-latest.json) from the local ~/Backups/xpf tree")
+  .option("--backups <dir>", "backups root", path.join(os.homedir(), "Backups/xpf"))
+  .option("-o, --out <file>", "output file", DEFAULT_INFRA_JSON)
+  .action((o) => {
+    const snap = loadInfraSnapshot(path.resolve(o.backups));
+    if (!snap.date) { console.error(`no snapshot found under ${o.backups}`); process.exitCode = 1; return; }
+    saveInfraSnapshot(snap, path.resolve(o.out));
+    console.log(`infra snapshot ${snap.date} → ${path.resolve(o.out)}`);
   });
 
 prog.parseAsync();

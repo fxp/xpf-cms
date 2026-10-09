@@ -3,17 +3,22 @@ import path from "node:path";
 import os from "node:os";
 import { loadConfig, loadSite, validateSite } from "@xpf/core";
 import { buildQueues } from "./queues.ts";
-import { loadInfraSnapshot } from "./infra.ts";
+import { fileURLToPath } from "node:url";
+import { loadInfraSnapshot, loadInfraFromFile } from "./infra.ts";
 import { renderDashboard } from "./render.ts";
 
-export interface BuildDashboardOpts { site: string; out: string; backups?: string; }
+/** Committed fallback used when the local backups tree is absent (CI). Refresh it with `xpf build infra`. */
+export const DEFAULT_INFRA_JSON = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../data/infra-latest.json");
+
+export interface BuildDashboardOpts { site: string; out: string; backups?: string; infraJson?: string; }
 
 export function buildDashboard(opts: BuildDashboardOpts) {
   const config = loadConfig();
   const site = loadSite(path.resolve(opts.site), config);
   const { findings, stats } = validateSite(site);
   const queues = buildQueues(site, findings);
-  const infra = loadInfraSnapshot(path.resolve(opts.backups ?? path.join(os.homedir(), "Backups/xpf")));
+  const local = loadInfraSnapshot(path.resolve(opts.backups ?? path.join(os.homedir(), "Backups/xpf")));
+  const infra = local.date ? local : loadInfraFromFile(path.resolve(opts.infraJson ?? DEFAULT_INFRA_JSON));
   const generatedAt = new Date().toISOString().replace("T", " ").slice(0, 16) + " UTC";
 
   const html = renderDashboard({ site, findings, stats, queues, infra, generatedAt });
