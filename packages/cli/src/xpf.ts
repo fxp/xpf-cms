@@ -3,8 +3,9 @@ import { Command } from "commander";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { loadConfig, loadSite, validateSite, renderReport, buildMarkdownFace, patchAgentsTxt } from "@xpf/core";
+import { loadConfig, loadSite, validateSite, renderReport, buildMarkdownFace, patchAgentsTxt, planPublish, ownershipFor, isDerived, parseRef, type Verb, type PublishPlan } from "@xpf/core";
 import { buildDashboard, loadInfraSnapshot, saveInfraSnapshot, DEFAULT_INFRA_JSON } from "@xpf/admin";
+import { GitView, headSha, currentBranch, aheadBehind, collectWorktreeChanges, resolveItemDirFs } from "./worktree.ts";
 
 const prog = new Command().name("xpf").description("xpf-cms · Agent-first Artifact Management System CLI").version("0.1.0");
 const siteOpt = (c: Command) => c.option("-s, --site <dir>", "site repo root", path.join(os.homedir(), "code/xiaopingfeng-site"));
@@ -58,5 +59,67 @@ build.command("infra").description("write the committed infra snapshot (data/inf
     saveInfraSnapshot(snap, path.resolve(o.out));
     console.log(`infra snapshot ${snap.date} → ${path.resolve(o.out)}`);
   });
+
+// ---- publish / update / remove --------------------------------------------------------------------
+// The write path for site content: collect this item's owned changes from the working tree, judge the
+// resulting tree with the same planPublish() the cms Worker runs, and (once the Worker exists) hand the
+// bundle over for an atomic commit. Until then only --dry-run is available.
+function fmtSize(n = 0) { return n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`; }
+
+async function runPublish(verb: Verb, ref: string, o: any) {
+  const root = path.resolve(o.site);
+  const config = loadConfig();
+  const { type, slug } = parseRef(ref);
+  if (!config.verticals[type]) { console.error(`unknown vertical "${type}"`); process.exitCode = 2; return; }
+  const itemDir: string | null = o.itemDir ?? resolveItemDirFs(root, config, type, slug);
+  const ownDir = itemDir ?? (type === "buzzwords" ? `buzzwords/${slug}` : `${config.verticals[type].dirs[0]}/${slug}`);
+  const owned = ownershipFor(config, type, ownDir, o.also ?? []);
+  const keep = (p: string) => owned(p) || isDerived(config, p);
+
+  const branch = currentBranch(root);
+  const [ahead, behind] = aheadBehind(root);
+  const bundle = { base_sha: headSha(root), changes: collectWorktreeChanges(root, keep) };
+  const plan: PublishPlan = await planPublish(new GitView(root), bundle, {
+    ref, verb, summary: o.summary, actor: o.actor, calendar: !!o.calendar, also: o.also, itemDir: itemDir ?? undefined,
+    placeholder: !!o.placeholder, derive: o.derive !== false,
+  }, config);
+  // environment checks only the CLI can make
+  if (branch !== "main") plan.findings.push({ severity: "error", code: "not-on-main", message: `site checkout is on "${branch}", not main` });
+  if (behind > 0) plan.findings.push({ severity: "error", code: "behind-origin", message: `local main is ${behind} commit(s) behind origin/main; git pull --ff-only first` });
+  if (ahead > 0) plan.findings.push({ severity: "warning", code: "ahead-of-origin", message: `local main has ${ahead} unpushed commit(s); they are not part of this publish` });
+  plan.ok = !plan.findings.some(f => f.severity === "error");
+
+  if (o.json) { console.log(JSON.stringify({ ...plan, changes: plan.changes.map(c => ({ path: c.path, op: c.op, size: c.size })), base_sha: bundle.base_sha }, null, 2)); }
+  else {
+    const errs = plan.findings.filter(f => f.severity === "error").length, warns = plan.findings.filter(f => f.severity === "warning").length;
+    console.log(`${plan.ok ? "✓" : "✗"} ${verb} ${ref}${plan.id ? `  id ${plan.id}` : ""}   branch ${branch} (ahead ${ahead}, behind ${behind})   base ${bundle.base_sha.slice(0, 8)}`);
+    console.log(`  item dir: ${plan.itemDir ?? "(not found)"}`);
+    console.log(`  ${plan.changes.length} file(s) to commit${plan.skippedDerived.length ? `, ${plan.skippedDerived.length} derived skipped` : ""}:`);
+    for (const c of plan.changes) console.log(`    ${c.op === "delete" ? "delete" : "put   "} ${c.path}${c.op === "put" ? `  (${fmtSize(c.size)})` : ""}`);
+    console.log(`  findings: ${errs} error(s), ${warns} warning(s)`);
+    for (const f of plan.findings) console.log(`    ${f.severity === "error" ? "✗" : f.severity === "warning" ? "!" : "·"} ${f.code}${f.path ? ` [${f.path}]` : ""}: ${f.message}`);
+    if (plan.commit.subject) console.log(`  commit:\n${plan.commit.message.split("\n").map(l => "    " + l).join("\n")}`);
+  }
+  if (!plan.ok) { process.exitCode = 1; return; }
+  if (!o.dryRun) {
+    console.error("\nxpf publish can only dry-run for now: the cms Worker that performs the atomic commit is not deployed yet (milestone M2). Use --dry-run.");
+    process.exitCode = 2;
+  }
+}
+
+for (const verb of ["publish", "update", "remove"] as const) {
+  const v: Verb = verb === "publish" ? "add" : verb;
+  siteOpt(prog.command(`${verb} <ref>`).description(`${verb === "publish" ? "publish a new item" : verb === "update" ? "publish changes to an existing item" : "take an item down (registry tombstone)"} — <ref> is <type>/<slug>, e.g. howto/skill-state or buzzwords/106`))
+    .option("--summary <text>", "commit body / change summary")
+    .option("--actor <who>", "recorded in the commit trailer (human | agent:claude-code …)", process.env.XPF_ACTOR ?? "human")
+    .option("--calendar", "tag the commit [content-update] so it appears on the homepage calendar")
+    .option("--also <paths...>", "extra source paths this publish owns (e.g. _redirects)")
+    .option("--item-dir <dir>", "item directory when it is not <vertical dir>/<slug>")
+    .option("--placeholder", "allow a non-published meta.status (howto 'coming soon')")
+    .option("--no-derive", "omit the 'Derive: pending' trailer")
+    .option("--dry-run", "validate and show the plan; do not publish")
+    .option("--json", "print the plan as JSON")
+    .action((ref, o) => runPublish(v, ref, o));
+}
 
 prog.parseAsync();
