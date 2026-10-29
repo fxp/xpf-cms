@@ -1,9 +1,9 @@
 #!/usr/bin/env tsx
 import { Command } from "commander";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { loadConfig, loadSite, validateSite, renderReport, buildMarkdownFace, patchAgentsTxt, planPublish, ownershipFor, isDerived, parseRef, type Verb, type PublishPlan } from "@xpf/core";
+import { loadConfig, loadSite, validateSite, renderReport, buildMarkdownFace, patchAgentsTxt, planPublish, ownershipFor, isDerived, parseRef, registerEntry, type Verb, type PublishPlan } from "@xpf/core";
 import { buildDashboard, loadInfraSnapshot, saveInfraSnapshot, DEFAULT_INFRA_JSON } from "@xpf/admin";
 import { GitView, headSha, currentBranch, aheadBehind, collectWorktreeChanges, resolveItemDirFs, syncAfterPublish } from "./worktree.ts";
 import { loadClientConfig, postJson } from "./client.ts";
@@ -61,6 +61,23 @@ build.command("infra").description("write the committed infra snapshot (data/inf
     console.log(`infra snapshot ${snap.date} → ${path.resolve(o.out)}`);
   });
 
+// ---- register ------------------------------------------------------------------------------------------
+// The registry edit every publish needs (next id + counter, or the removal tombstone), done the same way for every skill.
+siteOpt(prog.command("register <ref>").description("add <type>/<slug> to config/content-index.json with the next id (or --remove: tombstone it); edits the working tree only"))
+  .option("--title <text>", "registry title (required when adding)")
+  .option("--date <YYYY-MM-DD>", "item date (add) or takedown date (remove)", new Date().toLocaleDateString("sv-SE"))
+  .option("--remove", "mark the entry removed instead of adding one")
+  .action((ref, o) => {
+    const config = loadConfig();
+    const file = path.join(path.resolve(o.site), config.publish.registry);
+    try {
+      const r = registerEntry(JSON.parse(readFileSync(file, "utf8")), config, ref, { title: o.title ?? "", date: o.date, remove: !!o.remove });
+      writeFileSync(file, JSON.stringify(r.registry, null, 2) + "\n");
+      const prefix = config.verticals[parseRef(ref).type].id_prefix;
+      console.log(`${r.action === "added" ? "✓ registered" : "✓ marked removed"} ${ref}  ${prefix}·${r.id}  (${config.publish.registry} edited in the working tree; not published yet)`);
+    } catch (e: any) { console.error(`✗ ${e.message}`); process.exitCode = 1; }
+  });
+
 // ---- publish / update / remove --------------------------------------------------------------------
 // The write path for site content: collect this item's owned changes from the working tree, judge the
 // resulting tree with the same planPublish() the cms Worker runs, and (once the Worker exists) hand the
@@ -99,6 +116,7 @@ async function runPublish(verb: Verb, ref: string, o: any) {
     for (const c of plan.changes) console.log(`    ${c.op === "delete" ? "delete" : "put   "} ${c.path}${c.op === "put" ? `  (${fmtSize(c.size)})` : ""}`);
     console.log(`  findings: ${errs} error(s), ${warns} warning(s)`);
     for (const f of plan.findings) console.log(`    ${f.severity === "error" ? "✗" : f.severity === "warning" ? "!" : "·"} ${f.code}${f.path ? ` [${f.path}]` : ""}: ${f.message}`);
+    if (plan.findings.some(f => f.code === "registry-entry-missing")) console.log(`  hint: xpf register ${ref} --title "<title>" --date <YYYY-MM-DD>   (use --remove for a takedown)`);
     if (plan.commit.subject) console.log(`  commit:\n${plan.commit.message.split("\n").map(l => "    " + l).join("\n")}`);
   }
   if (!plan.ok) { process.exitCode = 1; return; }

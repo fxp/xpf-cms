@@ -8,7 +8,11 @@ pnpm xpf validate --report reports/validate-$(date +%F).md      # read-only heal
 pnpm xpf build llms --out /tmp/xpf-build                          # Markdown face: index.md · llms.txt · llms-full.txt
 pnpm xpf build dashboard --out /tmp/xpf-dashboard                 # static ops dashboard (queues, verticals, infra snapshot)
 bash ops/backup.sh --full                                         # M0 backup (see ops/README.md)
+pnpm xpf register howto/<slug> --site <ws> --title "…"           # next id into the working tree's config/content-index.json (--remove: tombstone)
+pnpm xpf publish|update|remove <type>/<slug> --site <ws> [--dry-run --remote]   # send the item's owned files to the cms Worker
 ```
+
+Skills use these through `~/.claude/skills/cms-publish` (clean sparse workspace via `xpf-ws`, then `xpf register/publish`).
 
 Packages: `core` (schema v2, site loader, validator, HTML→Markdown, llms generators) · `admin` (dashboard) · `cli` (`xpf`). Config: `config/verticals.json`.
 
