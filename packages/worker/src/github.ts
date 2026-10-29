@@ -14,9 +14,13 @@ export interface GithubLike {
   getText(path: string, ref: string): Promise<string | null>;
   exists(path: string, ref: string): Promise<boolean>;
   listWorkflowRuns(workflowFile: string, headSha: string): Promise<WorkflowRun[]>;
+  /** Newest runs of a workflow on a branch, whatever commit they started from. */
+  listRecentRuns(workflowFile: string, branch: string): Promise<WorkflowRun[]>;
+  /** True when `head` is `base` itself or a descendant of it. */
+  isAtOrAhead(base: string, head: string): Promise<boolean>;
 }
 export interface TreeEntry { path: string; mode: "100644"; type: "blob"; sha?: string | null; content?: string; }
-export interface WorkflowRun { id: number; status: string; conclusion: string | null; html_url: string; head_sha: string; }
+export interface WorkflowRun { id: number; status: string; conclusion: string | null; html_url: string; head_sha: string; event?: string; }
 
 export class GithubError extends Error {
   constructor(public status: number, message: string) { super(message); this.name = "GithubError"; }
@@ -86,6 +90,15 @@ export class GithubClient implements GithubLike {
   async listWorkflowRuns(workflowFile: string, headSha: string) {
     const j = await this.json<any>("GET", `/actions/workflows/${workflowFile}/runs?head_sha=${headSha}&per_page=5`);
     return (j.workflow_runs ?? []).map((w: any) => ({ id: w.id, status: w.status, conclusion: w.conclusion, html_url: w.html_url, head_sha: w.head_sha })) as WorkflowRun[];
+  }
+  async listRecentRuns(workflowFile: string, branch: string) {
+    const j = await this.json<any>("GET", `/actions/workflows/${workflowFile}/runs?branch=${encodeURIComponent(branch)}&per_page=20`);
+    return (j.workflow_runs ?? []).map((w: any) => ({ id: w.id, status: w.status, conclusion: w.conclusion, html_url: w.html_url, head_sha: w.head_sha, event: w.event })) as WorkflowRun[];
+  }
+  async isAtOrAhead(base: string, head: string) {
+    if (base === head) return true;
+    const c = await this.json<any>("GET", `/compare/${base}...${head}`);
+    return c.status === "identical" || c.status === "ahead";
   }
 }
 

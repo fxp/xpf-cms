@@ -5,10 +5,12 @@ import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloud
 import { GithubClient } from "./github.ts";
 import { setPublishStatus, upsertItem } from "./db.ts";
 import { verifyLive } from "./verify.ts";
+import { deployVerdict, type DeployVerdict } from "./deploy-wait.ts";
 import type { Env, PublishParams } from "./env.ts";
 
 const POLL_SECONDS = 30;
 const MAX_POLLS = 30;           // 15 minutes
+const FAILURES_BEFORE_GIVING_UP = 3;   // a failed run can be followed by a good one (Translate and Derive both deploy)
 
 export class PublishPipeline extends WorkflowEntrypoint<Env, PublishParams> {
   async run(event: WorkflowEvent<PublishParams>, step: WorkflowStep) {
@@ -18,17 +20,14 @@ export class PublishPipeline extends WorkflowEntrypoint<Env, PublishParams> {
       if (p.production) {
         await step.do("status:deploying", () => setPublishStatus(this.env, id, "deploying"));
         const gh = new GithubClient(this.env.GITHUB_TOKEN, this.env.GITHUB_REPO);
-        let deployed: "success" | "failure" | "pending" = "pending";
-        for (let i = 0; i < MAX_POLLS && deployed === "pending"; i++) {
-          deployed = await step.do(`poll deploy #${i}`, async () => {
-            const runs = await gh.listWorkflowRuns("deploy.yml", p.commit_sha);
-            const run = runs.find(r => r.head_sha === p.commit_sha);
-            if (!run || run.status !== "completed") return "pending" as const;
-            return run.conclusion === "success" ? "success" as const : "failure" as const;
-          });
-          if (deployed === "pending") await step.sleep(`wait #${i}`, `${POLL_SECONDS} seconds`);
+        let deployed: DeployVerdict = "pending", failures = 0;
+        for (let i = 0; i < MAX_POLLS && deployed !== "success"; i++) {
+          deployed = await step.do(`poll deploy #${i}`, async () => (await deployVerdict(gh, "deploy.yml", p.branch, p.commit_sha)).verdict);
+          failures = deployed === "failure" ? failures + 1 : 0;
+          if (failures >= FAILURES_BEFORE_GIVING_UP) throw new Error("deploy.yml failed for this commit");
+          if (deployed !== "success") await step.sleep(`wait #${i}`, `${POLL_SECONDS} seconds`);
         }
-        if (deployed !== "success") throw new Error(deployed === "failure" ? "deploy.yml failed for this commit" : "timed out waiting for deploy.yml");
+        if (deployed !== "success") throw new Error("timed out waiting for deploy.yml");
       }
 
       // Sandbox branches (xpf-smoke) are never deployed, so there is nothing live to verify and nothing for the production index.
