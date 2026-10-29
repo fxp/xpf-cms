@@ -5,6 +5,8 @@ export interface VerticalConfig {
   url_prefix: string;
   id_prefix: string;
   counter: string | null;
+  /** counter is null but items still have id-less entries in the registry (landscape, live): `xpf register` adds them and a publish carries the registry. */
+  registered?: boolean;
   body_format?: string;
   markdown_source?: "derived" | "authored" | "none";
   in_manifest?: boolean;

@@ -44,6 +44,15 @@ describe("registerEntry", () => {
     expect(() => registerEntry(reg(), config, "howto/nope", { title: "", date: "2026-10-29", remove: true })).toThrow(/not in the registry/);
     expect(() => registerEntry(reg(), config, "deepdive/old", { title: "", date: "2026-10-29", remove: true })).toThrow(/already removed/);
   });
+  it("landscape and live get an id-less row in the shape the existing rows have", () => {
+    const r = registerEntry({ counters: { howto: 3 }, items: [] }, config, "live/new-page", { title: "New page", date: "2026-10-29" });
+    expect(r.id).toBeNull();
+    expect(r.registry.items).toEqual([{ type: "live", slug: "new-page", date: "2026-10-29", title: "New page" }]);
+    expect(r.registry.counters).toEqual({ howto: 3 });
+    const gone = registerEntry(r.registry, config, "live/new-page", { title: "", date: "2026-11-01", remove: true });
+    expect(gone.registry.items[0]).toMatchObject({ status: "removed", removed_date: "2026-11-01" });
+    expect(() => registerEntry(r.registry, config, "live/new-page", { title: "x", date: "2026-10-29" })).toThrow(/already registered/);
+  });
   it("rejects types that are not id-tracked or not hosted here, and bad dates", () => {
     expect(() => registerEntry(reg(), config, "training/x", { title: "x", date: "2026-10-29" })).toThrow(/not id-tracked/);
     expect(() => registerEntry(reg(), config, "roam/x", { title: "x", date: "2026-10-29" })).toThrow(/own repo/);

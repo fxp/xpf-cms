@@ -14,7 +14,7 @@
     "derived": [
       "config/site-manifest.json", "sitemap.xml", "llms.txt", "llms-full.txt", "agents.txt", "reports/validate-latest.md",
       "deepdive/index.html", "deepdive/latest/**", "deepdive/c/**", "deepdive/llms.txt",
-      "deepdive/_data/articles.json", "deepdive/_data/related.json", "deepdive/_data/storylines.json", "deepdive/_data/companions.json", "deepdive/_data/labs.json"
+      "deepdive/_data/articles.json", "deepdive/_data/related.json", "deepdive/_data/storylines.json", "deepdive/_data/companions.json"
     ],
     "forbidden": [".github/**", "scripts/**", "functions/**", "wrangler.toml", "_headers"]
   },
@@ -28,8 +28,8 @@
     "apps":        { "label": "Apps · 工具", "listing": ["apps/index.html"],             "dirs": ["apps"],         "url_prefix": "/apps/",        "id_prefix": "AP", "counter": "apps",        "body_format": "html", "markdown_source": "derived", "in_manifest": true, "description": "小型 Web 工具；部分为静态页，部分 302 到独立部署的服务。" },
     "skills":      { "label": "Skills · Agent 技能", "listing": ["apps/skills/index.html"],     "dirs": ["apps/skills"],  "url_prefix": "/apps/skills/", "id_prefix": "SK", "counter": "skills",      "body_format": "html", "markdown_source": "derived", "in_manifest": true, "description": "自研或收藏的 Claude Code / Agent Skill，每条指向可安装的 SKILL.md。" },
     "training":    { "label": "Training · AI 分享", "listing": ["training/index.html"],      "dirs": ["training"],     "url_prefix": "/training/",    "id_prefix": "TR", "counter": null,          "body_format": "html", "markdown_source": "derived", "in_manifest": true, "indexed": false, "description": "对外培训与分享的幻灯片、讲义与参考资料清单。" },
-    "landscape":   { "label": "Landscape · 图谱", "listing": ["landscape/index.html"],        "dirs": ["landscape"],    "url_prefix": "/landscape/",   "id_prefix": "LS", "counter": null,          "body_format": "html", "markdown_source": "derived", "in_manifest": true, "description": "持续更新的结构性产业图谱：Agent 开发栈、算力产业链、Agent 安全攻击面、AI 治理、行业信号流、芯片设计流程。" },
-    "live":        { "label": "Live · 持续观察", "listing": ["live/index.html"],         "dirs": ["live"],         "url_prefix": "/live/",        "id_prefix": "LV", "counter": null,          "body_format": "html", "markdown_source": "derived", "in_manifest": true, "description": "持续更新的观察专题（如 NEO LAB 新型实验室系列）。" },
+    "landscape":   { "label": "Landscape · 图谱", "listing": ["landscape/index.html"],        "dirs": ["landscape"],    "url_prefix": "/landscape/",   "id_prefix": "LS", "counter": null, "registered": true,          "body_format": "html", "markdown_source": "derived", "in_manifest": true, "description": "持续更新的结构性产业图谱：Agent 开发栈、算力产业链、Agent 安全攻击面、AI 治理、行业信号流、芯片设计流程。" },
+    "live":        { "label": "Live · 持续观察", "listing": ["live/index.html"],         "dirs": ["live"],         "url_prefix": "/live/",        "id_prefix": "LV", "counter": null, "registered": true,          "body_format": "html", "markdown_source": "derived", "in_manifest": true, "description": "持续更新的观察专题（如 NEO LAB 新型实验室系列）。" },
     "group":       { "label": "Group · 读者群",          "dirs": ["group"],        "url_prefix": "/group/",       "id_prefix": "GR", "counter": null,          "body_format": "html", "markdown_source": "none",    "in_manifest": false, "description": "读者群入口 landing 页（含轮换二维码）。" },
     "roam":        { "label": "Roam · 问野",             "dirs": [],               "url_prefix": "https://roam.xiaopingfeng.com/", "id_prefix": "RM", "counter": "roam", "federated": true, "manifest_url": "https://roam.xiaopingfeng.com/manifest.json", "in_manifest": true, "description": "AI Agent 自主完成任务的展示空间，独立站点。" }
   }

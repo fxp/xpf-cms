@@ -57,8 +57,16 @@ describe("globs and ownership", () => {
     expect(own("howto/wiki-skill/index.html")).toBe(false);
     expect(own("howto/new-guide-2/index.html")).toBe(false);
   });
-  it("does not own the registry for types without a counter", () => {
-    expect(ownershipFor(config, "landscape", "landscape/x")("config/content-index.json")).toBe(false);
+  it("does not own the registry for types that are not tracked in it", () => {
+    expect(ownershipFor(config, "training", "training/x")("config/content-index.json")).toBe(false);
+  });
+  it("owns the registry for id-less tracked types (landscape, live)", () => {
+    expect(ownershipFor(config, "landscape", "landscape/x")("config/content-index.json")).toBe(true);
+    expect(ownershipFor(config, "live", "live/x")("config/content-index.json")).toBe(true);
+  });
+  it("labs.json is hand-edited data: not derived", () => {
+    expect(isDerived(config, "deepdive/_data/labs.json")).toBe(false);
+    expect(isDerived(config, "deepdive/_data/articles.json")).toBe(true);
   });
   it("treats site-level generated files as derived", () => {
     for (const p of ["config/site-manifest.json", "sitemap.xml", "deepdive/index.html", "deepdive/c/x/index.html", "deepdive/llms.txt"]) expect(isDerived(config, p)).toBe(true);
@@ -227,5 +235,58 @@ describe("planPublish · guards", () => {
   it("rejects unknown and federated verticals", async () => {
     expect(codes(await planPublish(base(), { changes: [] }, { ref: "nope/x", verb: "add" }, config))).toContain("unknown-type");
     expect(codes(await planPublish(base(), { changes: [] }, { ref: "roam/x", verb: "add" }, config))).toContain("federated-type");
+  });
+});
+
+describe("planPublish · id-less tracked verticals (landscape, live)", () => {
+  const withLive = (extra: object[] = []) => json(registry({ items: [{ type: "live", slug: "old-page", date: "2026-09-01", title: "Old", ...{} }, ...extra] }));
+  const liveBase = () => new MapView({
+    ...baseFiles(),
+    "config/content-index.json": withLive(),
+    "live/index.html": '<li data-slug="old-page"></li>',
+    "live/old-page/index.html": "<html>old</html>",
+    "live/old-page/index.meta.json": meta("old-page", { type: "live" }),
+  });
+  const newPage = (entry?: object): Bundle => ({
+    changes: [
+      put("live/new-page/index.html", "<html>new</html>"),
+      put("live/new-page/index.meta.json", meta("new-page", { type: "live" })),
+      put("live/index.html", '<li data-slug="old-page"></li><li data-slug="new-page"></li>'),
+      ...(entry ? [put("config/content-index.json", withLive([entry]))] : []),
+    ],
+  });
+  const entry = { type: "live", slug: "new-page", date: "2026-10-29", title: "New" };
+
+  it("add needs the registry entry now, like every tracked type", async () => {
+    const p = await planPublish(liveBase(), newPage(), { ref: "live/new-page", verb: "add" }, config);
+    expect(codes(p)).toContain("registry-entry-missing");
+  });
+  it("accepts an add with an id-less entry and sends the registry with just that row added", async () => {
+    const p = await planPublish(liveBase(), newPage(entry), { ref: "live/new-page", verb: "add" }, config);
+    expect(codes(p)).toEqual([]);
+    expect(p.id).toBeNull();
+    const reg = p.changes.find(c => c.path === "config/content-index.json")!;
+    expect(JSON.parse(reg.content!).items.filter((e: any) => e.type === "live").map((e: any) => e.slug)).toEqual(["old-page", "new-page"]);
+    expect(p.commit.subject).toBe("feat(live): add new-page");
+  });
+  it("keeps rows other publishes added since the bundle was written (semantic merge, not overwrite)", async () => {
+    const racing = new MapView({ ...baseFiles(), "config/content-index.json": withLive([{ type: "live", slug: "raced", date: "2026-10-28", title: "Raced" }]), "live/index.html": "", "live/old-page/index.html": "x", "live/old-page/index.meta.json": meta("old-page", { type: "live" }) });
+    const p = await planPublish(racing, newPage(entry), { ref: "live/new-page", verb: "add" }, config);
+    expect(codes(p)).toEqual([]);
+    const reg = JSON.parse(p.changes.find(c => c.path === "config/content-index.json")!.content!);
+    expect(reg.items.filter((e: any) => e.type === "live").map((e: any) => e.slug).sort()).toEqual(["new-page", "old-page", "raced"]);
+  });
+  it("updates a page that was never registered with a warning, not an error, and never sends a stray registry", async () => {
+    const files = { ...baseFiles(), "live/index.html": "", "live/legacy/index.html": "<html>legacy</html>", "live/legacy/index.meta.json": meta("legacy", { type: "live" }) };
+    const bundle: Bundle = { changes: [put("live/legacy/index.html", "<html>legacy v2</html>"), put("config/content-index.json", json({ counters: {}, items: [] }))] };
+    const p = await planPublish(new MapView(files), bundle, { ref: "live/legacy", verb: "update" }, config);
+    expect(codes(p)).toEqual([]);
+    expect(codes(p, "warning")).toEqual(expect.arrayContaining(["not-registered", "registry-ignored"]));
+    expect(p.changes.map(c => c.path)).toEqual(["live/legacy/index.html"]);
+  });
+  it("remove still requires the tombstone", async () => {
+    const files = { ...baseFiles(), "config/content-index.json": withLive(), "live/old-page/index.html": "x", "live/old-page/index.meta.json": meta("old-page", { type: "live" }) };
+    const unmarked: Bundle = { changes: [del("live/old-page/index.html"), del("live/old-page/index.meta.json")] };
+    expect(codes(await planPublish(new MapView(files), unmarked, { ref: "live/old-page", verb: "remove" }, config))).toContain("remove-not-marked");
   });
 });

@@ -7,6 +7,7 @@ import { publish, summarize, HttpError, type PublishRequest } from "./service.ts
 import { audit, recordPublish } from "./db.ts";
 import { timingSafeEqual } from "./sign.ts";
 import type { Env, PublishParams } from "./env.ts";
+import { urlPathFor } from "./urls.ts";
 
 export { PublishPipeline } from "./pipeline.ts";
 
@@ -43,14 +44,6 @@ app.use("/api/*", async (c, next) => {
   await next();
 });
 
-function urlPathFor(ref: string): string | null {
-  const i = ref.indexOf("/");
-  const type = ref.slice(0, i), slug = ref.slice(i + 1);
-  const v = config.verticals[type];
-  if (!v || !v.url_prefix.startsWith("/")) return null;
-  return `${v.url_prefix}${slug}/`;
-}
-
 app.post("/api/publish", async c => {
   const len = Number(c.req.header("content-length") ?? 0);
   if (len > MAX_BODY) return c.json({ error: "bundle too large" }, 413);
@@ -72,7 +65,7 @@ app.post("/api/publish", async c => {
     if (res.status === "conflict") { log("conflict", { branch: res.branch, detail: res.conflicts.join(",") }); return c.json({ status: "conflict", conflicts: res.conflicts, head: res.head, message: res.message }, 409); }
 
     // committed: kick off the post-commit pipeline and record the audit row
-    const urlPath = urlPathFor(body.ref);
+    const urlPath = urlPathFor(config, body.ref, res.plan.itemDir);
     const params: PublishParams = {
       ref: body.ref, verb: body.verb, branch: res.branch, commit_sha: res.commit_sha, actor, url_path: urlPath,
       production: res.branch === allowed[0], id: res.plan.id, title: null,

@@ -62,6 +62,18 @@ export function collectWorktreeChanges(root: string, keep: (p: string) => boolea
   return [...out.values()].sort((a, b) => a.path.localeCompare(b.path));
 }
 
+/** Every path the working tree differs from HEAD in: untracked files individually, both ends of a rename. */
+export function listChangedPaths(root: string): string[] {
+  const parts = git(root, ["status", "--porcelain=v1", "-z", "-uall"])!.toString("utf8").split("\0").filter(Boolean);
+  const out = new Set<string>();
+  for (let i = 0; i < parts.length; i++) {
+    const rec = parts[i];
+    out.add(rec.slice(3));
+    if (rec[0] === "R" || rec[0] === "C") out.add(parts[++i]);
+  }
+  return [...out].sort();
+}
+
 /** Item directory as it exists in the working tree (first vertical dir that has it). */
 export function resolveItemDirFs(root: string, config: XpfConfig, type: string, slug: string): string | null {
   const v = config.verticals[type];

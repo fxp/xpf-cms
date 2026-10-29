@@ -53,7 +53,7 @@ export function ownershipFor(config: XpfConfig, type: string, itemDir: string, a
   const v = config.verticals[type];
   const listing = new Set(v?.listing ?? []);
   const extras = new Set(also);
-  const registry = v && v.counter !== null ? config.publish.registry : null;
+  const registry = v && (v.counter !== null || v.registered) ? config.publish.registry : null;
   return (p: string) => p.startsWith(itemDir + "/") || p === registry || listing.has(p) || extras.has(p);
 }
 /** Paths a bundle may carry that are neither owned nor an error: CI-generated, silently dropped. */
@@ -130,7 +130,7 @@ export async function planPublish(base: FileView, bundle: Bundle, intent: Publis
 
   // --- registry: semantic merge onto base --------------------------------------------------------
   let id: string | null = null;
-  if (counter !== null) {
+  if (counter !== null || vertical.registered) {
     const baseReg = tryJson(await base.read(registryPath));
     const workReg = tryJson(await overlay.read(registryPath));
     if (!baseReg.ok) push("error", "registry-unreadable", `${registryPath} on base: ${baseReg.error}`, registryPath);
@@ -141,14 +141,16 @@ export async function planPublish(base: FileView, bundle: Bundle, intent: Publis
       const mine = (workReg.value.items as any[]).find(e => registryKey(e) === intent.ref) ?? null;
       id = mine?.id ?? baseEntry?.id ?? null;
       if (intent.verb === "add") {
-        if (live) push("error", "already-published", `${intent.ref} is already registered (id ${live.id}); use update`, registryPath);
+        if (live) push("error", "already-published", `${intent.ref} is already registered${live.id ? ` (id ${live.id})` : ""}; use update`, registryPath);
         if (!mine) push("error", "registry-entry-missing", `${registryPath} has no entry for ${intent.ref}`, registryPath);
       } else if (!baseEntry) {
-        push("error", "not-published", `${intent.ref} is not registered on base; use add`, registryPath);
+        // id-less verticals (landscape, live) have pages that were never registered: keep updating those, just say so
+        if (counter !== null) push("error", "not-published", `${intent.ref} is not registered on base; use add`, registryPath);
+        else push("warning", "not-registered", `${intent.ref} has no registry entry on base; it is published without one`, registryPath);
       } else if (intent.verb === "remove" && (mine?.status !== "removed" || !mine?.removed_date)) {
         push("error", "remove-not-marked", `registry entry for ${intent.ref} must have status "removed" and removed_date`, registryPath);
       }
-      if (mine) {
+      if (mine && counter !== null) {
         if (!/^\d{4}$/.test(String(mine.id))) push("error", "id-format", `id "${mine.id}" is not a 4-digit string`, registryPath);
         const dup = (workReg.value.items as any[]).filter(e => e.type === type && e.id === mine.id && registryKey(e) !== intent.ref);
         if (dup.length) push("error", "id-duplicate", `id ${mine.id} is also used by ${dup.map(registryKey).join(", ")}`, registryPath);
@@ -158,6 +160,11 @@ export async function planPublish(base: FileView, bundle: Bundle, intent: Publis
           if (n <= baseCounter && !live && !baseEntry) push("error", "id-not-fresh", `id ${mine.id} is not above the current ${counter} counter (${baseCounter}); another publish may have landed — re-run`, registryPath);
         }
         if (type === "buzzwords" && String(mine.ep) !== slug) push("error", "ep-mismatch", `registry ep ${mine.ep} != ${slug}`, registryPath);
+      }
+      if (!mine) {
+        // never send a registry that does not carry this ref's entry: it would overwrite other publishes' rows
+        const i = changes.findIndex(c => c.path === registryPath);
+        if (i >= 0) { changes.splice(i, 1); push("warning", "registry-ignored", `${registryPath} was changed locally but has no entry for ${intent.ref}; not sent`, registryPath); }
       }
       if (baseReg.ok && workReg.ok && mine) {
         const { merged, foreignChanged } = mergeRegistry(baseReg.value, workReg.value, intent.ref, counter);

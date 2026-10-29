@@ -5,7 +5,7 @@ import path from "node:path";
 import os from "node:os";
 import { loadConfig, loadSite, validateSite, renderReport, buildMarkdownFace, patchAgentsTxt, planPublish, ownershipFor, isDerived, parseRef, registerEntry, type Verb, type PublishPlan } from "@xpf/core";
 import { buildDashboard, loadInfraSnapshot, saveInfraSnapshot, DEFAULT_INFRA_JSON } from "@xpf/admin";
-import { GitView, headSha, currentBranch, aheadBehind, collectWorktreeChanges, resolveItemDirFs, syncAfterPublish } from "./worktree.ts";
+import { GitView, headSha, currentBranch, aheadBehind, collectWorktreeChanges, listChangedPaths, resolveItemDirFs, syncAfterPublish } from "./worktree.ts";
 import { loadClientConfig, postJson } from "./client.ts";
 
 const prog = new Command().name("xpf").description("xpf-cms · Agent-first Artifact Management System CLI").version("0.1.0");
@@ -74,7 +74,7 @@ siteOpt(prog.command("register <ref>").description("add <type>/<slug> to config/
       const r = registerEntry(JSON.parse(readFileSync(file, "utf8")), config, ref, { title: o.title ?? "", date: o.date, remove: !!o.remove });
       writeFileSync(file, JSON.stringify(r.registry, null, 2) + "\n");
       const prefix = config.verticals[parseRef(ref).type].id_prefix;
-      console.log(`${r.action === "added" ? "✓ registered" : "✓ marked removed"} ${ref}  ${prefix}·${r.id}  (${config.publish.registry} edited in the working tree; not published yet)`);
+      console.log(`${r.action === "added" ? "✓ registered" : "✓ marked removed"} ${ref}  ${r.id ? `${prefix}·${r.id}` : "(no id for this type)"}  (${config.publish.registry} edited in the working tree; not published yet)`);
     } catch (e: any) { console.error(`✗ ${e.message}`); process.exitCode = 1; }
   });
 
@@ -101,6 +101,9 @@ async function runPublish(verb: Verb, ref: string, o: any) {
     ref, verb, summary: o.summary, actor: o.actor, calendar: !!o.calendar, also: o.also, itemDir: itemDir ?? undefined,
     placeholder: !!o.placeholder, derive: o.derive !== false,
   }, config);
+  // changes in the working tree that this publish does not own are not sent, and used to vanish without a word
+  const left = listChangedPaths(root).filter(p => !keep(p));
+  if (left.length) plan.findings.push({ severity: "warning", code: "dropped-unowned", message: `${left.length} local change(s) are not part of this publish and stay local: ${left.slice(0, 5).join(", ")}${left.length > 5 ? ` … (+${left.length - 5})` : ""}. If any belongs to ${ref}, re-run with --also <path>.` });
   // environment checks only the CLI can make
   if (branch !== "main") plan.findings.push({ severity: "error", code: "not-on-main", message: `site checkout is on "${branch}", not main` });
   if (behind > 0) plan.findings.push({ severity: "error", code: "behind-origin", message: `local main is ${behind} commit(s) behind origin/main; git pull --ff-only first` });
