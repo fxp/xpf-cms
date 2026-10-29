@@ -75,7 +75,7 @@ app.post("/api/publish", async c => {
     const urlPath = urlPathFor(body.ref);
     const params: PublishParams = {
       ref: body.ref, verb: body.verb, branch: res.branch, commit_sha: res.commit_sha, actor, url_path: urlPath,
-      wait_deploy: res.branch === allowed[0], id: res.plan.id, title: null,
+      production: res.branch === allowed[0], id: res.plan.id, title: null,
     };
     let instanceId: string | null = null;
     try {
@@ -122,6 +122,8 @@ app.post("/api/reindex", async c => {
   const text = await gh.getText("config/site-manifest.json", branch);
   if (!text) return c.json({ error: "site-manifest.json not found" }, 502);
   const manifest = JSON.parse(text) as { items: any[] };
+  // buzzwords entries carry `ep` instead of `slug`; the ref is buzzwords/<ep>
+  manifest.items = manifest.items.map(it => ({ ...it, slug: it.slug ?? it.ep }));
   const stmts = manifest.items.map(it => c.env.DB.prepare(
     `insert into items (ref, type, slug, id, title, state, url_path, first_published, last_updated, last_commit, indexed_at) values (?,?,?,?,?,?,?,?,?,null,?)
      on conflict(ref) do update set type=excluded.type, slug=excluded.slug, id=excluded.id, title=excluded.title, state=excluded.state, url_path=excluded.url_path,

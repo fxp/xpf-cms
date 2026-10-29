@@ -6,8 +6,9 @@ export interface PublishParams {
   actor: string;
   /** public URL path to verify once deployed (e.g. /howto/foo/); null = nothing to verify */
   url_path: string | null;
-  /** whether to wait for the production deploy of commit_sha (main only) */
-  wait_deploy: boolean;
+  /** true when the commit is on the default (deployed) branch. Only then does the pipeline wait for the
+   *  deploy, verify the live page and write the production D1 index; sandbox branches like xpf-smoke skip all three. */
+  production: boolean;
   id: string | null;
   title: string | null;
 }

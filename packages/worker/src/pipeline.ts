@@ -4,6 +4,7 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import { GithubClient } from "./github.ts";
 import { setPublishStatus, upsertItem } from "./db.ts";
+import { verifyLive } from "./verify.ts";
 import type { Env, PublishParams } from "./env.ts";
 
 const POLL_SECONDS = 30;
@@ -14,7 +15,7 @@ export class PublishPipeline extends WorkflowEntrypoint<Env, PublishParams> {
     const p = event.payload;
     const id = event.instanceId;
     try {
-      if (p.wait_deploy) {
+      if (p.production) {
         await step.do("status:deploying", () => setPublishStatus(this.env, id, "deploying"));
         const gh = new GithubClient(this.env.GITHUB_TOKEN, this.env.GITHUB_REPO);
         let deployed: "success" | "failure" | "pending" = "pending";
@@ -30,20 +31,21 @@ export class PublishPipeline extends WorkflowEntrypoint<Env, PublishParams> {
         if (deployed !== "success") throw new Error(deployed === "failure" ? "deploy.yml failed for this commit" : "timed out waiting for deploy.yml");
       }
 
-      if (p.url_path && p.verb !== "remove") {
+      // Sandbox branches (xpf-smoke) are never deployed, so there is nothing live to verify and nothing for the production index.
+      if (p.production && p.url_path && p.verb !== "remove") {
         await step.do("status:verifying", () => setPublishStatus(this.env, id, "verifying"));
         await step.do("verify live", { retries: { limit: 5, delay: "20 seconds", backoff: "constant" } }, async () => {
-          const url = `${this.env.SITE_BASE}${p.url_path}?xpf=${p.commit_sha.slice(0, 8)}`;
-          const r = await fetch(url, { headers: { "user-agent": "xpf-cms-verify" }, redirect: "follow" });
-          if (r.status !== 200) throw new Error(`${url} → ${r.status}`);
-          return r.status;
+          await verifyLive(this.env.SITE_BASE, p.url_path!, p.commit_sha);
+          return "ok";
         });
       }
 
-      await step.do("index", async () => {
-        const [type, ...rest] = p.ref.split("/");
-        await upsertItem(this.env, { ref: p.ref, type, slug: rest.join("/"), id: p.id, title: p.title, state: p.verb === "remove" ? "removed" : "published", url_path: p.url_path, last_commit: p.commit_sha });
-      });
+      if (p.production) {
+        await step.do("index", async () => {
+          const [type, ...rest] = p.ref.split("/");
+          await upsertItem(this.env, { ref: p.ref, type, slug: rest.join("/"), id: p.id, title: p.title, state: p.verb === "remove" ? "removed" : "published", url_path: p.url_path, last_commit: p.commit_sha });
+        });
+      }
       await step.do("status:done", () => setPublishStatus(this.env, id, "done"));
     } catch (e: any) {
       await step.do("status:failed", () => setPublishStatus(this.env, id, "failed", String(e?.message ?? e).slice(0, 500)));

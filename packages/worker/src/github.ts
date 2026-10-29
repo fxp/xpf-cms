@@ -26,7 +26,9 @@ export class RefMovedError extends Error {
 }
 
 export class GithubClient implements GithubLike {
-  constructor(private token: string, private repo: string, private fetchImpl: typeof fetch = fetch, private base = "https://api.github.com") {}
+  // The default must be a wrapper, not the bare global: stored as a property and called as this.fetchImpl(...),
+  // Workers' fetch runs with this = the client and throws "Illegal invocation".
+  constructor(private token: string, private repo: string, private fetchImpl: typeof fetch = (input, init) => fetch(input, init), private base = "https://api.github.com") {}
 
   private async req(method: string, path: string, body?: unknown, accept = "application/vnd.github+json"): Promise<Response> {
     return this.fetchImpl(`${this.base}/repos/${this.repo}${path}`, {
