@@ -29,7 +29,7 @@ const PublishBody = z.object({
     summary: z.string().max(4000), actor: z.string().max(100), calendar: z.boolean(), also: z.array(z.string()).max(50),
     itemDir: z.string().max(300), placeholder: z.boolean(), derive: z.boolean(),
   }).partial().optional(),
-  bundle: z.object({ base_sha: z.string().optional(), changes: z.array(Change).max(1000) }),
+  bundle: z.object({ base_sha: z.string().optional(), changes: z.array(Change).max(5000) }),
   branch: z.string().max(100).optional(),
   dry_run: z.boolean().optional(),
 });
