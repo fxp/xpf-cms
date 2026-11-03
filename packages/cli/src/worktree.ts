@@ -88,11 +88,10 @@ export function resolveItemDirFs(root: string, config: XpfConfig, type: string, 
 export function syncAfterPublish(root: string, changes: BundleChange[], skip: Set<string> = new Set()): string | null {
   try {
     git(root, ["fetch", "-q", "origin", "main"]);
-    for (const c of changes) {
-      if (skip.has(c.path)) continue;
-      if (c.op === "put") git(root, ["checkout", "origin/main", "--", c.path], { allowFail: true });
-      else git(root, ["rm", "-q", "--cached", "--ignore-unmatch", "--", c.path], { allowFail: true });
-    }
+    const puts = changes.filter(c => !skip.has(c.path) && c.op === "put").map(c => c.path);
+    const dels = changes.filter(c => !skip.has(c.path) && c.op !== "put").map(c => c.path);
+    for (let i = 0; i < puts.length; i += 200) git(root, ["checkout", "origin/main", "--", ...puts.slice(i, i + 200)], { allowFail: true });
+    for (let i = 0; i < dels.length; i += 200) git(root, ["rm", "-q", "--cached", "--ignore-unmatch", "--", ...dels.slice(i, i + 200)], { allowFail: true });
     git(root, ["merge", "--ff-only", "-q", "origin/main"]);
     return null;
   } catch (e: any) {

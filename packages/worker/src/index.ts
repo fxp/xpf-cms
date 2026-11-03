@@ -8,6 +8,7 @@ import { audit, recordPublish } from "./db.ts";
 import { timingSafeEqual } from "./sign.ts";
 import type { Env, PublishParams } from "./env.ts";
 import { urlPathFor } from "./urls.ts";
+import { fetchGraphPages } from "./graph.ts";
 
 export { PublishPipeline } from "./pipeline.ts";
 
@@ -124,7 +125,17 @@ app.post("/api/reindex", async c => {
     .bind(`${it.type}/${it.slug}`, it.type, String(it.slug), it.id ?? null, it.title ?? null, it.status ?? "published", it.url_path ?? null, it.date ?? null, it.updates?.at?.(-1)?.date ?? it.date ?? null, new Date().toISOString()));
   for (let i = 0; i < stmts.length; i += 50) await c.env.DB.batch(stmts.slice(i, i + 50));
   await c.env.MANIFEST.put("manifest:count", String(manifest.items.length));
-  return c.json({ reindexed: manifest.items.length });
+  // the graph's analysis pages come from the library's own API (they are not in the manifest); an unreachable API leaves the rows as they were
+  const graphPages = await fetchGraphPages(c.env.SITE_BASE);
+  if (graphPages) {
+    const now = new Date().toISOString();
+    const gs = graphPages.map(g => c.env.DB.prepare(
+      `insert into items (ref, type, slug, id, title, state, url_path, first_published, last_updated, last_commit, indexed_at) values (?,?,?,?,?,?,?,?,?,null,?)
+       on conflict(ref) do update set title=excluded.title, state=excluded.state, url_path=excluded.url_path, last_updated=excluded.last_updated, indexed_at=excluded.indexed_at`)
+      .bind(g.ref, g.type, g.slug, null, g.title, g.state, g.url_path, g.date, g.date, now));
+    for (let i = 0; i < gs.length; i += 50) await c.env.DB.batch(gs.slice(i, i + 50));
+  }
+  return c.json({ reindexed: manifest.items.length, graph_pages: graphPages ? graphPages.length : null });
 });
 
 app.notFound(c => c.json({ error: "not found" }, 404));

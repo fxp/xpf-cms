@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import { loadConfig, planPublish, mergeRegistry, ownershipFor, isDerived, globToRegExp, MapView, OverlayView, parseRef, type Bundle, type BundleChange } from "../src/index.ts";
 
 const config = loadConfig();
+// landscape and live were retired from the site; the id-less tracked kind (`registered`) is still supported, so test it on a synthetic vertical
+const configReg = { ...config, verticals: { ...config.verticals, live: { label: "Live", listing: ["live/index.html"], dirs: ["live"], url_prefix: "/live/", id_prefix: "LV", counter: null, registered: true } } } as typeof config;
 const put = (path: string, content: string): BundleChange => ({ path, op: "put", encoding: "utf8", content, size: content.length });
 const del = (path: string): BundleChange => ({ path, op: "delete" });
 const json = (o: unknown) => JSON.stringify(o, null, 2) + "\n";
@@ -60,9 +62,8 @@ describe("globs and ownership", () => {
   it("does not own the registry for types that are not tracked in it", () => {
     expect(ownershipFor(config, "training", "training/x")("config/content-index.json")).toBe(false);
   });
-  it("owns the registry for id-less tracked types (landscape, live)", () => {
-    expect(ownershipFor(config, "landscape", "landscape/x")("config/content-index.json")).toBe(true);
-    expect(ownershipFor(config, "live", "live/x")("config/content-index.json")).toBe(true);
+  it("owns the registry for id-less tracked types (`registered`)", () => {
+    expect(ownershipFor(configReg, "live", "live/x")("config/content-index.json")).toBe(true);
   });
   it("labs.json is hand-edited data: not derived", () => {
     expect(isDerived(config, "deepdive/_data/labs.json")).toBe(false);
@@ -238,7 +239,7 @@ describe("planPublish · guards", () => {
   });
 });
 
-describe("planPublish · id-less tracked verticals (landscape, live)", () => {
+describe("planPublish · id-less tracked verticals (`registered`)", () => {
   const withLive = (extra: object[] = []) => json(registry({ items: [{ type: "live", slug: "old-page", date: "2026-09-01", title: "Old", ...{} }, ...extra] }));
   const liveBase = () => new MapView({
     ...baseFiles(),
@@ -258,11 +259,11 @@ describe("planPublish · id-less tracked verticals (landscape, live)", () => {
   const entry = { type: "live", slug: "new-page", date: "2026-10-29", title: "New" };
 
   it("add needs the registry entry now, like every tracked type", async () => {
-    const p = await planPublish(liveBase(), newPage(), { ref: "live/new-page", verb: "add" }, config);
+    const p = await planPublish(liveBase(), newPage(), { ref: "live/new-page", verb: "add" }, configReg);
     expect(codes(p)).toContain("registry-entry-missing");
   });
   it("accepts an add with an id-less entry and sends the registry with just that row added", async () => {
-    const p = await planPublish(liveBase(), newPage(entry), { ref: "live/new-page", verb: "add" }, config);
+    const p = await planPublish(liveBase(), newPage(entry), { ref: "live/new-page", verb: "add" }, configReg);
     expect(codes(p)).toEqual([]);
     expect(p.id).toBeNull();
     const reg = p.changes.find(c => c.path === "config/content-index.json")!;
@@ -271,7 +272,7 @@ describe("planPublish · id-less tracked verticals (landscape, live)", () => {
   });
   it("keeps rows other publishes added since the bundle was written (semantic merge, not overwrite)", async () => {
     const racing = new MapView({ ...baseFiles(), "config/content-index.json": withLive([{ type: "live", slug: "raced", date: "2026-10-28", title: "Raced" }]), "live/index.html": "", "live/old-page/index.html": "x", "live/old-page/index.meta.json": meta("old-page", { type: "live" }) });
-    const p = await planPublish(racing, newPage(entry), { ref: "live/new-page", verb: "add" }, config);
+    const p = await planPublish(racing, newPage(entry), { ref: "live/new-page", verb: "add" }, configReg);
     expect(codes(p)).toEqual([]);
     const reg = JSON.parse(p.changes.find(c => c.path === "config/content-index.json")!.content!);
     expect(reg.items.filter((e: any) => e.type === "live").map((e: any) => e.slug).sort()).toEqual(["new-page", "old-page", "raced"]);
@@ -279,7 +280,7 @@ describe("planPublish · id-less tracked verticals (landscape, live)", () => {
   it("updates a page that was never registered with a warning, not an error, and never sends a stray registry", async () => {
     const files = { ...baseFiles(), "live/index.html": "", "live/legacy/index.html": "<html>legacy</html>", "live/legacy/index.meta.json": meta("legacy", { type: "live" }) };
     const bundle: Bundle = { changes: [put("live/legacy/index.html", "<html>legacy v2</html>"), put("config/content-index.json", json({ counters: {}, items: [] }))] };
-    const p = await planPublish(new MapView(files), bundle, { ref: "live/legacy", verb: "update" }, config);
+    const p = await planPublish(new MapView(files), bundle, { ref: "live/legacy", verb: "update" }, configReg);
     expect(codes(p)).toEqual([]);
     expect(codes(p, "warning")).toEqual(expect.arrayContaining(["not-registered", "registry-ignored"]));
     expect(p.changes.map(c => c.path)).toEqual(["live/legacy/index.html"]);
@@ -287,6 +288,52 @@ describe("planPublish · id-less tracked verticals (landscape, live)", () => {
   it("remove still requires the tombstone", async () => {
     const files = { ...baseFiles(), "config/content-index.json": withLive(), "live/old-page/index.html": "x", "live/old-page/index.meta.json": meta("old-page", { type: "live" }) };
     const unmarked: Bundle = { changes: [del("live/old-page/index.html"), del("live/old-page/index.meta.json")] };
-    expect(codes(await planPublish(new MapView(files), unmarked, { ref: "live/old-page", verb: "remove" }, config))).toContain("remove-not-marked");
+    expect(codes(await planPublish(new MapView(files), unmarked, { ref: "live/old-page", verb: "remove" }, configReg))).toContain("remove-not-marked");
+  });
+});
+
+describe("planPublish · tree (graph/, generated as one unit)", () => {
+  const baseTree = () => new MapView({ ...baseFiles(), "graph/index.html": "<html>old</html>", "graph/e/org/openai/index.html": "<html>openai</html>", "graph/gone/index.html": "x" });
+  const update = (changes: BundleChange[], extra: object = {}) => planPublish(baseTree(), { changes }, { ref: "graph/site", verb: "update", ...extra }, config);
+
+  it("accepts a refresh of the tree: any file under graph/, deletions included, no item meta / registry / listing needed", async () => {
+    const p = await update([put("graph/index.html", "<html>new</html>"), put("graph/e/org/new/index.html", "<html>new org</html>"), del("graph/gone/index.html")]);
+    expect(codes(p)).toEqual([]);
+    expect(p.itemDir).toBe("graph");
+    expect(p.id).toBeNull();
+    expect(p.changes.map(c => `${c.op}:${c.path}`).sort()).toEqual(["delete:graph/gone/index.html", "put:graph/e/org/new/index.html", "put:graph/index.html"]);
+    expect(p.commit.subject).toBe("chore(graph): refresh site");
+    expect(p.commit.message).toContain("Artifact: graph/site");
+  });
+  it("is update-only: add and remove make no sense for a tree", async () => {
+    for (const verb of ["add", "remove"] as const) {
+      const p = await planPublish(baseTree(), { changes: [put("graph/index.html", "x")] }, { ref: "graph/site", verb }, config);
+      expect(codes(p)).toContain("tree-update-only");
+    }
+  });
+  it("code and config never travel: functions/, scripts/, _headers are forbidden even next to graph pages", async () => {
+    const p = await update([put("graph/index.html", "x"), put("functions/api/graph/query.js", "x"), put("scripts/build_sitemap.py", "x"), put("_headers", "x")]);
+    expect(codes(p).filter(c => c === "forbidden-path")).toHaveLength(3);
+    expect(p.ok).toBe(false);
+  });
+  it("a file outside graph/ needs --also (e.g. _redirects); generated root files are dropped, not errors", async () => {
+    const files = [put("graph/index.html", "x"), put("_redirects", "/live/* /graph/:splat 301"), put("sitemap.xml", "<urlset/>")];
+    const without = await update(files);
+    expect(codes(without)).toEqual(["unowned-path"]);
+    const withAlso = await update(files, { also: ["_redirects"] });
+    expect(codes(withAlso)).toEqual([]);
+    expect(withAlso.changes.map(c => c.path).sort()).toEqual(["_redirects", "graph/index.html"]);
+    expect(withAlso.skippedDerived).toEqual(["sitemap.xml"]);
+  });
+  it("refuses an empty refresh and warns about mass deletion", async () => {
+    expect(codes(await update([]))).toContain("no-changes");
+    const many = Array.from({ length: 201 }, (_, i) => del(`graph/e/org/x${i}/index.html`));
+    expect(codes(await update([put("graph/index.html", "x"), ...many]), "warning")).toContain("tree-many-deletes");
+  });
+  it("owns exactly the tree's directories (not a sibling with the same prefix)", () => {
+    const own = ownershipFor(config, "graph", "graph");
+    expect(own("graph/e/org/openai/index.html")).toBe(true);
+    expect(own("graph2/index.html")).toBe(false);
+    expect(own("config/content-index.json")).toBe(false);
   });
 });

@@ -83,7 +83,7 @@ export function loadSite(root: string, config: XpfConfig): Site {
   };
 
   for (const [type, v] of Object.entries(config.verticals)) {
-    if (v.federated) continue;
+    if (v.federated || v.tree) continue;       // a tree (graph/) is generated as one unit: its pages are not items
     for (const d of v.dirs) {
       const base = path.join(root, d);
       if (!existsSync(base)) continue;
@@ -165,7 +165,7 @@ export function loadSite(root: string, config: XpfConfig): Site {
   try { redirects = readFileSync(path.join(root, "_redirects"), "utf8"); } catch {}
   for (const [ref, r] of registryByRef) {
     if (items.has(ref)) continue;
-    if (r.type === "roam") continue;
+    if (r.type === "roam" || config.verticals[r.type]?.tree) continue;
     const i = ref.indexOf("/"); const type = ref.slice(0, i); const slug = ref.slice(i + 1);
     const v = config.verticals[type];
     let page: string | undefined; let moved: string | undefined;

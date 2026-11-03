@@ -3,6 +3,7 @@
 import { planPublish, parseRef, type Bundle, type PublishIntent, type PublishPlan, type PublishFinding, type XpfConfig, type Verb } from "@xpf/core/edge";
 import { GithubView, RefMovedError, type GithubLike, type TreeEntry } from "./github.ts";
 import { signCommit } from "./sign.ts";
+import { createTreeChunked } from "./tree.ts";
 
 export interface PublishRequest {
   ref: string;
@@ -73,7 +74,7 @@ export async function publish(deps: ServiceDeps, req: PublishRequest): Promise<P
         else if ((c.encoding ?? "utf8") === "utf8") entries.push({ path: c.path, mode: "100644", type: "blob", content: c.content ?? "" });
         else entries.push({ path: c.path, mode: "100644", type: "blob", sha: await gh.createBlob(c.content ?? "") });
       }
-      const tree = await gh.createTree(parent.tree, entries);
+      const tree = await createTreeChunked(gh, parent.tree, entries);
       const sig = await signCommit(deps.signingSecret, tree, head.sha, plan.ref);
       const message = `${plan.commit.message.trimEnd()}\nXpf-Sig: ${sig}\n`;
       const sha = await gh.createCommit({ message, tree, parents: [head.sha], author: AUTHOR });

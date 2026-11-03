@@ -2,6 +2,7 @@ import type { Finding, Site } from "@xpf/core";
 import { absUrl, itemDate, itemTitle, itemState, isPublic } from "@xpf/core";
 import type { Queues, QueueEntry } from "./queues.ts";
 import type { InfraSnapshot } from "./infra.ts";
+import type { GraphSummary } from "./graph.ts";
 
 const esc = (s: string) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
@@ -33,11 +34,33 @@ function queueSection(id: string, label: string, hint: string, entries: QueueEnt
   </section>`;
 }
 
+export function renderGraph(g: GraphSummary | null, base: string): string {
+  if (!g) return `<h2>Graph · 实体库</h2><div class="panel"><p class="empty">站点里没有 graph/data/kb.json（还没建库，或检出不完整）。</p></div>`;
+  const stat = (label: string, n: number | string, cls = "") => `<div class="card ${cls}"><div class="n">${esc(String(n))}</div><div class="l">${esc(label)}</div></div>`;
+  const types = g.nodeTypes.slice(0, 12).map(([t, n]) => `<tr><td>${esc(t)}</td><td>${n}</td></tr>`).join("");
+  const edgeTypes = g.edgeTypes.slice(0, 12).map(([t, n]) => `<tr><td>${esc(t)}</td><td>${n}</td></tr>`).join("");
+  const pages = g.pages.map(p => `<tr><td><a href="${esc(base)}${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}</a></td><td class="ref">${esc(p.path)}</td><td>${esc(p.group)}</td><td>${p.blocks}</td></tr>`).join("");
+  const agent = g.agent.length ? `<p class="more">智能体计数：${g.agent.map(([k, v]) => `${esc(k)} ${v}`).join(" · ")}</p>` : "";
+  return `
+  <h2>Graph · 实体库 · 库建于 ${esc(g.generated)}</h2>
+  <div class="panel">
+    <div class="cards" style="padding:16px 16px 0">${stat("节点", g.nodes)}${stat(`关系（核心 ${g.coreEdges}）`, g.edges)}${stat("分析页", g.pages.length)}${stat("待复核机构", g.provisionalOrgs, g.provisionalOrgs ? "warn" : "ok")}${g.agent.some(([k]) => k === "links_unreviewed") ? stat("待复核关系（智能体新增）", g.agent.find(([k]) => k === "links_unreviewed")![1], "warn") : ""}</div>
+    <p class="more">graph/ 由 <code>kb.py publish --cms</code> 整棵生成，经 <code>xpf update graph/site</code> 作为一个整体发布；页面不登记、不分配编号。分析页是库里的 Page 节点。</p>
+    ${agent}
+    <div class="two-col">
+      <div><table><thead><tr><th>节点类型</th><th>数量</th></tr></thead><tbody>${types}</tbody></table></div>
+      <div><table><thead><tr><th>关系类型</th><th>数量</th></tr></thead><tbody>${edgeTypes}</tbody></table></div>
+    </div>
+    <table><thead><tr><th>分析页</th><th>path</th><th>分组</th><th>块</th></tr></thead><tbody>${pages}</tbody></table>
+  </div>`;
+}
+
 export function renderDashboard(opts: {
-  site: Site; findings: Finding[]; stats: Record<string, number>; queues: Queues; infra: InfraSnapshot;
+  site: Site; findings: Finding[]; stats: Record<string, number>; queues: Queues; infra: InfraSnapshot; graph?: GraphSummary | null;
   generatedAt: string; siteRepoCommit?: string;
 }): string {
   const { site, findings, stats, queues, infra, generatedAt } = opts;
+  const graphPanel = renderGraph(opts.graph ?? null, site.config.site.base_url);
   const errors = findings.filter(f => f.severity === "error").length;
   const warnings = findings.filter(f => f.severity === "warning").length;
   const infos = findings.length - errors - warnings;
@@ -169,6 +192,8 @@ export function renderDashboard(opts: {
       <div class="panel"><table><thead><tr><th>code</th><th>severity</th><th>数量</th></tr></thead><tbody>${codeRows}</tbody></table></div>
     </div>
   </div>
+
+  ${graphPanel}
 
   <h2>基础设施快照${infra.date ? ` · 截至备份 ${esc(infra.date)}${infra.delta ? "（较上次备份）" : ""}` : ""}</h2>
   ${infra.date ? `<div class="panel"><table><thead><tr><th>资源</th><th>数量</th><th>变化</th></tr></thead><tbody>${infraRows}</tbody></table>

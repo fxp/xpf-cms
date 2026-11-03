@@ -5,7 +5,8 @@ import path from "node:path";
 import { registerEntry } from "../src/register.ts";
 import type { XpfConfig } from "../src/config-types.ts";
 
-const config = JSON.parse(readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../config/verticals.json"), "utf8")) as XpfConfig;
+const baseConfig = JSON.parse(readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../config/verticals.json"), "utf8")) as XpfConfig;
+const config = { ...baseConfig, verticals: { ...baseConfig.verticals, live: { label: "Live", dirs: ["live"], url_prefix: "/live/", id_prefix: "LV", counter: null, registered: true } } } as XpfConfig;   // landscape/live are retired from the real config; `registered` is still supported
 const reg = () => ({
   counters: { howto: 3, buzzwords: 108, deepdive: 10 },
   items: [
@@ -44,7 +45,7 @@ describe("registerEntry", () => {
     expect(() => registerEntry(reg(), config, "howto/nope", { title: "", date: "2026-10-29", remove: true })).toThrow(/not in the registry/);
     expect(() => registerEntry(reg(), config, "deepdive/old", { title: "", date: "2026-10-29", remove: true })).toThrow(/already removed/);
   });
-  it("landscape and live get an id-less row in the shape the existing rows have", () => {
+  it("a `registered` vertical (id-less) gets a row in the shape the existing rows have", () => {
     const r = registerEntry({ counters: { howto: 3 }, items: [] }, config, "live/new-page", { title: "New page", date: "2026-10-29" });
     expect(r.id).toBeNull();
     expect(r.registry.items).toEqual([{ type: "live", slug: "new-page", date: "2026-10-29", title: "New page" }]);

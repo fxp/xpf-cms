@@ -2,7 +2,7 @@
 // resulting tree is acceptable, and what the commit looks like. Pure and runtime-neutral —
 // the CLI (`xpf publish --dry-run`), CI and the cms Worker all call this same function.
 import { MetaV2 } from "./schema.ts";
-import type { XpfConfig } from "./config-types.ts";
+import type { XpfConfig, VerticalConfig } from "./config-types.ts";
 import { OverlayView, matchesAny, type Bundle, type BundleChange, type FileView } from "./bundle.ts";
 
 export type Verb = "add" | "update" | "remove";
@@ -53,6 +53,8 @@ export function ownershipFor(config: XpfConfig, type: string, itemDir: string, a
   const v = config.verticals[type];
   const listing = new Set(v?.listing ?? []);
   const extras = new Set(also);
+  // a tree (graph/) is one unit: everything under its directories is part of the publish; it has no registry rows or listing
+  if (v?.tree) { const dirs = v.dirs.map(d => d.replace(/\/$/, "") + "/"); return (p: string) => dirs.some(d => p.startsWith(d)) || extras.has(p); }
   const registry = v && (v.counter !== null || v.registered) ? config.publish.registry : null;
   return (p: string) => p.startsWith(itemDir + "/") || p === registry || listing.has(p) || extras.has(p);
 }
@@ -90,6 +92,35 @@ export function mergeRegistry(base: any, working: any, ref: string, counter: str
   return { merged, foreignChanged };
 }
 
+/** A generated tree (graph/): everything under its directories is sent as one commit. No item meta, registry or listing —
+ *  the generator (kb.py) owns the content; the Worker only carries it and judges which paths may travel. */
+function planTree(bundle: Bundle, intent: PublishIntent, config: XpfConfig, vertical: VerticalConfig, findings: PublishFinding[], empty: () => PublishPlan): PublishPlan {
+  const push = (severity: PublishFinding["severity"], code: string, message: string, path?: string) => findings.push({ severity, code, message, path });
+  const { type, slug } = parseRef(intent.ref);
+  if (intent.verb !== "update") { push("error", "tree-update-only", `${type} is a generated tree published as one unit: use update (xpf update ${type}/${slug}), not ${intent.verb}`); return empty(); }
+  const itemDir = vertical.dirs[0];
+  const owned = ownershipFor(config, type, itemDir, intent.also);
+  const changes: BundleChange[] = [];
+  const skippedDerived: string[] = [];
+  for (const c of bundle.changes) {
+    if (matchesAny(config.publish.forbidden, c.path)) { push("error", "forbidden-path", `${c.path} may never be part of a content publish (code and config are committed by hand)`, c.path); continue; }
+    if (owned(c.path)) { changes.push(c); continue; }
+    if (matchesAny(config.publish.derived, c.path)) { skippedDerived.push(c.path); continue; }
+    push("error", "unowned-path", `${c.path} is not under ${vertical.dirs.join(", ")}; add it with --also if intended`, c.path);
+  }
+  if (skippedDerived.length) push("info", "derived-skipped", `${skippedDerived.length} derived file(s) not sent; CI regenerates them`);
+  if (!changes.length) push("error", "no-changes", `nothing to publish for ${intent.ref}: no file under ${vertical.dirs.join(", ")} changed`);
+  const deletes = changes.filter(c => c.op === "delete").length;
+  if (deletes > 200) push("warning", "tree-many-deletes", `${deletes} files are deleted; check that the generator ran on a complete checkout`);
+  const total = changes.reduce((s, c) => s + (c.size ?? c.content?.length ?? 0), 0);
+  if (total > 50 * 1024 * 1024) push("warning", "bundle-large", `bundle is ${(total / 1048576).toFixed(1)} MB; the Worker may run out of memory above ~50 MB`);
+
+  const subject = `chore(${type}): refresh ${slug}${intent.calendar ? " [content-update]" : ""}`;
+  const trailers = ["Published-via: xpf-cms", `Artifact: ${intent.ref}`, `Actor: ${intent.actor ?? "human"}`, ...(intent.derive ? ["Derive: pending"] : [])];
+  const body = [intent.summary?.trim(), trailers.join("\n")].filter(Boolean).join("\n\n");
+  return { ok: !findings.some(f => f.severity === "error"), ref: intent.ref, type, slug, verb: intent.verb, itemDir, id: null, findings, changes, skippedDerived, commit: { subject, body, message: `${subject}\n\n${body}\n` } };
+}
+
 export async function planPublish(base: FileView, bundle: Bundle, intent: PublishIntent, config: XpfConfig): Promise<PublishPlan> {
   const findings: PublishFinding[] = [];
   const push = (severity: PublishFinding["severity"], code: string, message: string, path?: string) => findings.push({ severity, code, message, path });
@@ -101,6 +132,8 @@ export async function planPublish(base: FileView, bundle: Bundle, intent: Publis
 
   if (!vertical) { push("error", "unknown-type", `unknown vertical "${type}"`); return empty(); }
   if (vertical.federated) { push("error", "federated-type", `${type} lives in its own repo; register it with roam_register instead`); return empty(); }
+
+  if (vertical.tree) return planTree(bundle, intent, config, vertical, findings, empty);
 
   // --- item directory ---------------------------------------------------------------------------
   let itemDir: string | null = intent.itemDir ?? null;

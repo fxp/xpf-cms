@@ -7,6 +7,9 @@ export interface VerticalConfig {
   counter: string | null;
   /** counter is null but items still have id-less entries in the registry (landscape, live): `xpf register` adds them and a publish carries the registry. */
   registered?: boolean;
+  /** a generated tree published as one unit (graph/): no per-item meta, registry or listing; every file under `dirs` belongs to the
+   *  publish, which is always an `update` of <type>/<name> (the name only labels the commit). */
+  tree?: boolean;
   body_format?: string;
   markdown_source?: "derived" | "authored" | "none";
   in_manifest?: boolean;

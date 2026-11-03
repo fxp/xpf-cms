@@ -89,8 +89,9 @@ async function runPublish(verb: Verb, ref: string, o: any) {
   const config = loadConfig();
   const { type, slug } = parseRef(ref);
   if (!config.verticals[type]) { console.error(`unknown vertical "${type}"`); process.exitCode = 2; return; }
-  const itemDir: string | null = o.itemDir ?? resolveItemDirFs(root, config, type, slug);
-  const ownDir = itemDir ?? (type === "buzzwords" ? `buzzwords/${slug}` : `${config.verticals[type].dirs[0]}/${slug}`);
+  const isTree = !!config.verticals[type].tree;           // graph/: one generated tree, no per-item directory
+  const itemDir: string | null = isTree ? null : (o.itemDir ?? resolveItemDirFs(root, config, type, slug));
+  const ownDir = itemDir ?? (type === "buzzwords" ? `buzzwords/${slug}` : `${config.verticals[type].dirs[0]}${isTree ? "" : `/${slug}`}`);
   const owned = ownershipFor(config, type, ownDir, o.also ?? []);
   const keep = (p: string) => owned(p) || isDerived(config, p);
 
@@ -105,7 +106,9 @@ async function runPublish(verb: Verb, ref: string, o: any) {
   const left = listChangedPaths(root).filter(p => !keep(p));
   if (left.length) plan.findings.push({ severity: "warning", code: "dropped-unowned", message: `${left.length} local change(s) are not part of this publish and stay local: ${left.slice(0, 5).join(", ")}${left.length > 5 ? ` … (+${left.length - 5})` : ""}. If any belongs to ${ref}, re-run with --also <path>.` });
   // environment checks only the CLI can make
-  if (branch !== "main") plan.findings.push({ severity: "error", code: "not-on-main", message: `site checkout is on "${branch}", not main` });
+  // a worktree detached exactly at origin/main (what kb.py publish builds in) is as good as main; any other branch is not
+  const detachedAtMain = branch === "" && ahead === 0 && behind === 0;
+  if (branch !== "main" && !detachedAtMain) plan.findings.push({ severity: "error", code: "not-on-main", message: `site checkout is on "${branch || "a detached HEAD"}", not main` });
   if (behind > 0) plan.findings.push({ severity: "error", code: "behind-origin", message: `local main is ${behind} commit(s) behind origin/main; git pull --ff-only first` });
   if (ahead > 0) plan.findings.push({ severity: "warning", code: "ahead-of-origin", message: `local main has ${ahead} unpushed commit(s); they are not part of this publish` });
   plan.ok = !plan.findings.some(f => f.severity === "error");
@@ -138,7 +141,7 @@ async function runPublish(verb: Verb, ref: string, o: any) {
 
   console.log(`\n✓ committed ${String(j.commit_sha).slice(0, 8)} on ${j.branch}  ${j.commit_url}`);
   if (j.instance_id) console.log(`  pipeline ${j.instance_id} (deploy wait + verify + index): xpf status ${j.instance_id}`);
-  if (!o.branch) {
+  if (!o.branch && o.sync !== false) {
     const hadForeign = plan.findings.some(f => f.code === "registry-foreign-entries");
     const err = syncAfterPublish(root, plan.changes, hadForeign ? new Set([config.publish.registry]) : new Set());
     if (err) console.error(`  ! local checkout not fast-forwarded (${err}).\n    run: git stash && git pull --ff-only && git stash pop`);
@@ -159,6 +162,7 @@ for (const verb of ["publish", "update", "remove"] as const) {
     .option("--dry-run", "validate and show the plan; do not publish")
     .option("--remote", "with --dry-run: also ask the cms Worker to validate against the live branch head")
     .option("--branch <name>", "publish to this branch instead of main (smoke tests; skips local sync)")
+    .option("--no-sync", "do not fast-forward the local checkout to what the Worker committed (a throwaway worktree)")
     .option("--json", "print the plan as JSON")
     .action((ref, o) => runPublish(v, ref, o));
 }

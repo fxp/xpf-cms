@@ -6,6 +6,7 @@ import { buildQueues } from "./queues.ts";
 import { fileURLToPath } from "node:url";
 import { loadInfraSnapshot, loadInfraFromFile } from "./infra.ts";
 import { renderDashboard } from "./render.ts";
+import { loadGraphSummary } from "./graph.ts";
 
 /** Committed fallback used when the local backups tree is absent (CI). Refresh it with `xpf build infra`. */
 export const DEFAULT_INFRA_JSON = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../data/infra-latest.json");
@@ -21,7 +22,8 @@ export function buildDashboard(opts: BuildDashboardOpts) {
   const infra = local.date ? local : loadInfraFromFile(path.resolve(opts.infraJson ?? DEFAULT_INFRA_JSON));
   const generatedAt = new Date().toISOString().replace("T", " ").slice(0, 16) + " UTC";
 
-  const html = renderDashboard({ site, findings, stats, queues, infra, generatedAt });
+  const graph = loadGraphSummary(path.resolve(opts.site));
+  const html = renderDashboard({ site, findings, stats, queues, infra, graph, generatedAt });
   mkdirSync(path.resolve(opts.out), { recursive: true });
   writeFileSync(path.join(path.resolve(opts.out), "index.html"), html, "utf8");
 
@@ -30,6 +32,7 @@ export function buildDashboard(opts: BuildDashboardOpts) {
     findingsCount: findings.length,
     queueCounts: Object.fromEntries(Object.entries(queues).map(([k, v]) => [k, (v as any[]).length])),
     infra: { date: infra.date, counts: infra.counts, delta: infra.delta },
+    graph: graph ? { generated: graph.generated, nodes: graph.nodes, edges: graph.edges, pages: graph.pages.length, provisionalOrgs: graph.provisionalOrgs } : null,
   };
   writeFileSync(path.join(path.resolve(opts.out), "data.json"), JSON.stringify(data, null, 2), "utf8");
   writeFileSync(path.join(path.resolve(opts.out), "_headers"), "/*\n  X-Robots-Tag: noindex, nofollow\n  Cache-Control: no-store\n", "utf8");

@@ -191,3 +191,55 @@ describe("publish service", () => {
     expect(gh.files("main")["howto/wiki-skill/new.png"]).toBe("<blob:blob1>");
   });
 });
+
+describe("publish service · graph tree", () => {
+  class Counting extends FakeGithub {
+    batches: { entries: number; bytes: number }[] = [];
+    async createTree(base: string, entries: TreeEntry[]) {
+      this.batches.push({ entries: entries.length, bytes: entries.reduce((n, e) => n + (e.content ? new TextEncoder().encode(e.content).length : 0), 0) });
+      return super.createTree(base, entries);
+    }
+  }
+  const page = (i: number, kb: number) => put(`graph/e/org/o${i}/index.html`, `<html>${"é".repeat(kb * 512)}</html>`);   // é is 2 bytes in UTF-8, so kb is ~KB on the wire
+  const treeReq = (changes: BundleChange[], over: Partial<PublishRequest> = {}): PublishRequest => ({ ref: "graph/site", verb: "update", intent: { summary: "refresh", actor: "agent:kb" }, bundle: { changes }, ...over });
+
+  it("commits a refresh of the tree: pages added, one removed, signed, with the tree trailer", async () => {
+    const gh = new Counting({ ...seed(), "graph/index.html": "old", "graph/gone/index.html": "bye" });
+    const head0 = gh.refs.get("main")!;
+    const r = await publish(deps(gh), treeReq([put("graph/index.html", "new"), page(1, 1), { path: "graph/gone/index.html", op: "delete" }]));
+    expect(r.status).toBe("committed");
+    if (r.status !== "committed") return;
+    const files = gh.files("main");
+    expect(files["graph/index.html"]).toBe("new");
+    expect(files["graph/e/org/o1/index.html"]).toContain("<html>");
+    expect("graph/gone/index.html" in files).toBe(false);
+    expect(files["howto/wiki-skill/index.html"]).toBe("<html>ok</html>");          // the rest of the site is untouched
+    const c = gh.commits.get(r.commit_sha)!;
+    expect(c.parents).toEqual([head0]);
+    expect(c.message).toMatch(/^chore\(graph\): refresh site/);
+    expect(c.message).toContain("Artifact: graph/site");
+    expect(/Xpf-Sig: ([0-9a-f]{64})/.exec(c.message)![1]).toBe(await signCommit("s3cret", c.tree, head0, "graph/site"));
+  });
+
+  it("splits a large refresh into several create-tree calls under GitHub's inline-content limit, and loses nothing", async () => {
+    const gh = new Counting(seed());
+    const pages = Array.from({ length: 30 }, (_, i) => page(i, 600));                 // 30 pages of ~600 KB = ~18 MB
+    const r = await publish(deps(gh), treeReq(pages));
+    expect(r.status).toBe("committed");
+    expect(gh.batches.length).toBeGreaterThan(3);
+    for (const b of gh.batches) expect(b.bytes).toBeLessThanOrEqual(4 * 1024 * 1024 + 700 * 1024);   // a batch may overshoot by at most one page
+    expect(gh.batches.reduce((n, b) => n + b.entries, 0)).toBe(30);
+    const files = gh.files("main");
+    for (let i = 0; i < 30; i++) expect(files[`graph/e/org/o${i}/index.html`]).toBeDefined();
+  });
+
+  it("rejects code paths riding along with the tree, and add/remove verbs", async () => {
+    const gh = new Counting(seed());
+    const head0 = gh.refs.get("main")!;
+    const bad = await publish(deps(gh), treeReq([page(1, 1), put("functions/api/graph/query.js", "x")]));
+    expect(bad.status).toBe("rejected");
+    const verb = await publish(deps(gh), treeReq([page(1, 1)], { verb: "add" }));
+    expect(verb.status).toBe("rejected");
+    expect(gh.refs.get("main")).toBe(head0);          // nothing was committed
+  });
+});
