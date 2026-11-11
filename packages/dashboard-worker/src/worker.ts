@@ -2,6 +2,7 @@ import { generatePkce } from "./pkce.ts";
 import { buildAuthorizeUrl, buildLogoutUrl, exchangeCode, verifyIdToken, type Auth0Config } from "./auth0.ts";
 import { parseCookies, serializeCookie, clearCookie } from "./cookies.ts";
 import { signSession, verifySession } from "./session.ts";
+import { checkAccess, esc } from "./access.ts";
 
 export interface Env {
   ASSETS: Fetcher;
@@ -23,11 +24,6 @@ function auth0Config(env: Env, origin: string): Auth0Config {
     clientSecret: env.AUTH0_CLIENT_SECRET,
     redirectUri: `${origin}/callback`,
   };
-}
-
-function isAllowed(email: string, env: Env): boolean {
-  const list = env.ALLOWED_EMAILS.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
-  return list.includes(email.toLowerCase());
 }
 
 function html(body: string, status = 200): Response {
@@ -55,7 +51,7 @@ export default {
 
     if (url.pathname === "/callback") {
       const error = url.searchParams.get("error");
-      if (error) return html(`<p>Auth0 登录失败：${error} — ${url.searchParams.get("error_description") ?? ""}</p><p><a href="/login">重试</a></p>`, 401);
+      if (error) return html(`<p>Auth0 登录失败：${esc(error)} — ${esc(url.searchParams.get("error_description") ?? "")}</p><p><a href="/login">重试</a></p>`, 401);
 
       const raw = cookies[PKCE_COOKIE];
       if (!raw) return html(`<p>登录会话已过期或 cookie 丢失，请重新登录。</p><p><a href="/login">重新登录</a></p>`, 400);
@@ -72,14 +68,17 @@ export default {
         const hint = exchanged.error.error === "unauthorized_client" || exchanged.error.error === "invalid_client"
           ? " 这通常意味着 Auth0 应用被配置成了需要 client secret 的 Regular Web Application —— 要么在 Auth0 后台把该应用改成 Single Page Application / Token Endpoint Authentication Method = None，要么把 client secret 配成 Worker secret AUTH0_CLIENT_SECRET。"
           : "";
-        return html(`<p>换取 token 失败：${exchanged.error.error} — ${exchanged.error.error_description ?? ""}</p><p>${hint}</p>`, 401);
+        return html(`<p>换取 token 失败：${esc(exchanged.error.error)} — ${esc(exchanged.error.error_description ?? "")}</p><p>${hint}</p>`, 401);
       }
 
       const verified = await verifyIdToken(cfg, exchanged.idToken, pkce.nonce);
-      if (!verified.ok) return html(`<p>ID token 校验失败：${verified.reason}</p>`, 401);
+      if (!verified.ok) return html(`<p>ID token 校验失败：${esc(verified.reason)}</p>`, 401);
 
-      if (!isAllowed(verified.claims.email, env)) {
-        return html(`<p>登录成功，但 ${verified.claims.email} 不在允许名单里。</p>`, 403);
+      const access = checkAccess(verified.claims, env.ALLOWED_EMAILS);
+      if (!access.ok) {
+        return html(access.reason === "unverified"
+          ? `<p>登录成功，但 ${esc(verified.claims.email)} 还没有验证邮箱，不能进入。请先点 Auth0 发到这个邮箱的验证邮件，或改用 Google 登录。</p><p><a href="/logout">换个账号</a></p>`
+          : `<p>登录成功，但 ${esc(verified.claims.email)} 不在允许名单里。</p>`, access.status);
       }
 
       const session = await signSession(
