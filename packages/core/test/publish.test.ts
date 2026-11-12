@@ -410,3 +410,32 @@ describe("planPublish · labs (two hand-edited files published as one unit)", ()
   });
 });
 
+describe("planPublish · pages that are live but were never registered", () => {
+  const files = () => ({ ...baseFiles(),
+    "howto/legacy/index.html": "<html>legacy</html>", "howto/legacy/index.meta.json": meta("legacy"),      // live on base, no registry row
+    "buzzwords/data/index.json": json([{ ep: 106, web: "/buzzwords/106/" }, { ep: 70, web: "/buzzwords/70/" }]),   // an old episode: in the aggregate index, not in the registry
+    "buzzwords/70/index.html": "<html>ep70</html>" });
+  const run = (ref: string, verb: "update" | "remove", changes: BundleChange[]) => planPublish(new MapView(files()), { changes }, { ref, verb }, config);
+
+  it("an update of a live, unregistered page works with a warning and sends no registry row", async () => {
+    const p = await run("howto/legacy", "update", [put("howto/legacy/index.html", "<html>legacy v2</html>"), put("config/content-index.json", json(registry()))]);
+    expect(codes(p)).toEqual([]);
+    expect(codes(p, "warning")).toEqual(expect.arrayContaining(["not-registered", "registry-ignored"]));
+    expect(p.changes.map(c => c.path)).toEqual(["howto/legacy/index.html"]);
+  });
+  it("same for an old Buzzwords episode", async () => {
+    const p = await run("buzzwords/70", "update", [put("buzzwords/70/index.html", "<html>ep70 + list</html>")]);
+    expect(codes(p)).toEqual([]);
+    expect(codes(p, "warning")).toContain("not-registered");
+  });
+  it("a directory that exists only in the working tree is a new item: update is still an error (use add)", async () => {
+    const p = await planPublish(new MapView(files()), { changes: [put("howto/brand-new/index.html", "x"), put("howto/brand-new/index.meta.json", meta("brand-new"))] }, { ref: "howto/brand-new", verb: "update" }, config);
+    expect(codes(p)).toContain("not-published");
+  });
+  it("a live unregistered page can be taken down (no tombstone to write)", async () => {
+    const p = await run("howto/legacy", "remove", [{ path: "howto/legacy/index.html", op: "delete" }, { path: "howto/legacy/index.meta.json", op: "delete" }]);
+    expect(codes(p)).toEqual([]);
+    expect(codes(p, "warning")).toContain("not-registered");
+  });
+});
+

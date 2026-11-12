@@ -182,9 +182,12 @@ export async function planPublish(base: FileView, bundle: Bundle, intent: Publis
         if (live) push("error", "already-published", `${intent.ref} is already registered${live.id ? ` (id ${live.id})` : ""}; use update`, registryPath);
         if (!mine) push("error", "registry-entry-missing", `${registryPath} has no entry for ${intent.ref}`, registryPath);
       } else if (!baseEntry) {
-        // id-less verticals (landscape, live) have pages that were never registered: keep updating those, just say so
-        if (counter !== null) push("error", "not-published", `${intent.ref} is not registered on base; use add`, registryPath);
-        else push("warning", "not-registered", `${intent.ref} has no registry entry on base; it is published without one`, registryPath);
+        // A page that is live on base but was never registered (the old Buzzwords episodes, a handful of old DeepDive pages, id-less kinds)
+        // can still be updated or taken down: say so, and send no registry row for it. A directory that exists only in the working tree is
+        // a new item, and an update/remove of it is a mistake (typo, or `add` forgotten).
+        const onBase = !federated && !!itemDir && (await base.exists(`${itemDir}/index.html`) || await base.exists(`${itemDir}/index.meta.json`));
+        if (onBase || (counter === null && !federated)) push("warning", "not-registered", `${intent.ref} has no registry entry on base; it is published without one`, registryPath);
+        else push("error", "not-published", `${intent.ref} is not registered on base; use add`, registryPath);
       } else if (intent.verb === "remove" && (mine?.status !== "removed" || !mine?.removed_date)) {
         push("error", "remove-not-marked", `registry entry for ${intent.ref} must have status "removed" and removed_date`, registryPath);
       }
