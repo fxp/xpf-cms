@@ -10,6 +10,7 @@ export function urlPathFor(config: XpfConfig, ref: string, itemDir: string | nul
   const type = ref.slice(0, i), slug = ref.slice(i + 1);
   const v = config.verticals[type];
   if (!v || !v.url_prefix.startsWith("/")) return null;       // federated sites (roam) are verified elsewhere
+  if (v.tree) return v.url_prefix.endsWith("/") ? v.url_prefix : `${v.url_prefix}/`;     // a tree is verified at its landing page, whatever its ref says
   if (itemDir) return `/${itemDir.replace(/^\/+|\/+$/g, "")}/`;
   return `${v.url_prefix}${slug}/`;
 }

@@ -22,7 +22,6 @@ export function registerEntry(registry: any, config: XpfConfig, ref: string, o: 
   const { type, slug } = parseRef(ref);
   const v = config.verticals[type];
   if (!v) throw new Error(`unknown vertical "${type}"`);
-  if (v.federated) throw new Error(`${type} lives in its own repo; it is not registered here`);
   if (v.counter === null && !v.registered) throw new Error(`${type} items are not id-tracked in ${config.publish.registry}; nothing to register`);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(o.date)) throw new Error(`date must be YYYY-MM-DD, got "${o.date}"`);
   const out = JSON.parse(JSON.stringify(registry));

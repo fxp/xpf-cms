@@ -235,7 +235,8 @@ describe("planPublish · buzzwords", () => {
 describe("planPublish · guards", () => {
   it("rejects unknown and federated verticals", async () => {
     expect(codes(await planPublish(base(), { changes: [] }, { ref: "nope/x", verb: "add" }, config))).toContain("unknown-type");
-    expect(codes(await planPublish(base(), { changes: [] }, { ref: "roam/x", verb: "add" }, config))).toContain("federated-type");
+    const orphan = { ...config, verticals: { ...config.verticals, ext: { label: "Ext", dirs: [], url_prefix: "https://ext.example/", id_prefix: "EX", counter: null, federated: true } } } as typeof config;
+    expect(codes(await planPublish(base(), { changes: [] }, { ref: "ext/x", verb: "add" }, orphan))).toContain("federated-type");     // federated and nothing registered here: nothing to publish
   });
 });
 
@@ -337,3 +338,75 @@ describe("planPublish · tree (graph/, generated as one unit)", () => {
     expect(own("config/content-index.json")).toBe(false);
   });
 });
+
+describe("planPublish · federated (roam: only the registry row is published here)", () => {
+  const roamFiles = () => ({ ...baseFiles(), "config/content-index.json": json(registry({ counters: { roam: 11 }, items: [{ id: "0011", type: "roam", slug: "native-agent-focus-room", date: "2026-10-26", title: "x" }] })) });
+  const roamBase = () => new MapView(roamFiles());
+  const withRow = (extra: object[] = [], counter = 12) => json(registry({ counters: { roam: counter }, items: [{ id: "0011", type: "roam", slug: "native-agent-focus-room", date: "2026-10-26", title: "x" }, ...extra] }));
+  const newRow = { id: "0012", type: "roam", slug: "hardware-agent-bench", date: "2026-11-11", title: "硬件 Agent 接入 Bench" };
+  const add = (changes: BundleChange[], over: object = {}) => planPublish(roamBase(), { changes }, { ref: "roam/hardware-agent-bench", verb: "add", ...over }, config);
+
+  it("accepts an add that carries nothing but the registry row, with a conventional commit and the RM tag", async () => {
+    const p = await add([put("config/content-index.json", withRow([newRow]))]);
+    expect(codes(p)).toEqual([]);
+    expect(p.id).toBe("0012");
+    expect(p.itemDir).toBeNull();
+    expect(p.changes.map(c => c.path)).toEqual(["config/content-index.json"]);
+    expect(p.commit.subject).toBe("feat(roam): add hardware-agent-bench [RM·0012]");
+    expect(JSON.parse(p.changes[0].content!).counters.roam).toBe(12);
+  });
+  it("needs the registry row, and refuses a stale id", async () => {
+    expect(codes(await add([put("config/content-index.json", withRow())]))).toContain("registry-entry-missing");
+    const stale = await add([put("config/content-index.json", withRow([{ ...newRow, id: "0011" }], 11))]);
+    expect(codes(stale)).toEqual(expect.arrayContaining(["id-duplicate"]));
+  });
+  it("refuses anything but the registry: pages live in their own repo (no item dir, listing, or --also needed)", async () => {
+    const p = await add([put("config/content-index.json", withRow([newRow])), put("roam/hardware-agent-bench/index.html", "<html>")]);
+    expect(codes(p)).toContain("unowned-path");
+    expect(p.ok).toBe(false);
+  });
+  it("remove writes the tombstone; an unregistered task cannot be removed", async () => {
+    const tomb = json(registry({ counters: { roam: 11 }, items: [{ id: "0011", type: "roam", slug: "native-agent-focus-room", date: "2026-10-26", title: "x", status: "removed", removed_date: "2026-11-12" }] }));
+    const ok = await planPublish(roamBase(), { changes: [put("config/content-index.json", tomb)] }, { ref: "roam/native-agent-focus-room", verb: "remove" }, config);
+    expect(codes(ok)).toEqual([]);
+    expect(ok.commit.subject).toBe("chore(roam): remove native-agent-focus-room [RM·0011]");
+    const none = await planPublish(roamBase(), { changes: [put("config/content-index.json", tomb)] }, { ref: "roam/never-registered", verb: "remove" }, config);
+    expect(codes(none)).toContain("not-published");
+  });
+  it("an update that changes nothing in the registry is rejected as empty (no empty commits)", async () => {
+    const p = await planPublish(roamBase(), { changes: [put("config/content-index.json", withRow())] }, { ref: "roam/native-agent-focus-room", verb: "update" }, config);
+    expect(codes(p)).toContain("no-changes");
+  });
+});
+
+describe("planPublish · labs (two hand-edited files published as one unit)", () => {
+  const labsBase = () => new MapView({ ...baseFiles(), "deepdive/_data/labs.json": "{}", "deepdive/lab-watch/index.html": "<html>old</html>", "deepdive/lab-watch/frontier-startups.html": "<html>zh</html>", "deepdive/_data/articles.json": "[]" });
+  const upd = (changes: BundleChange[], over: object = {}) => planPublish(labsBase(), { changes }, { ref: "labs/lab-watch", verb: "update", ...over }, config);
+
+  it("accepts the two files together, with no meta, registry or listing", async () => {
+    const p = await upd([put("deepdive/_data/labs.json", '{"DATA":[1]}'), put("deepdive/lab-watch/index.html", "<html>new</html>")]);
+    expect(codes(p)).toEqual([]);
+    expect(p.itemDir).toBeNull();
+    expect(p.id).toBeNull();
+    expect(p.changes.map(c => c.path).sort()).toEqual(["deepdive/_data/labs.json", "deepdive/lab-watch/index.html"]);
+    expect(p.commit.subject).toBe("chore(labs): refresh lab-watch");
+  });
+  it("owns exactly those two files: neither the other lab-watch pages nor the rest of _data", async () => {
+    const own = ownershipFor(config, "labs", "");
+    expect(own("deepdive/_data/labs.json")).toBe(true);
+    expect(own("deepdive/lab-watch/index.html")).toBe(true);
+    expect(own("deepdive/lab-watch/frontier-startups.html")).toBe(false);
+    expect(own("deepdive/_data/articles.json")).toBe(false);
+    expect(own("config/content-index.json")).toBe(false);
+  });
+  it("refuses another lab-watch page riding along (that is a DeepDive article), and an empty refresh", async () => {
+    expect(codes(await upd([put("deepdive/_data/labs.json", "{}"), put("deepdive/lab-watch/frontier-startups.html", "x")]))).toContain("unowned-path");
+    expect(codes(await upd([]))).toContain("no-changes");
+  });
+  it("the generated lab table and data files are not part of it: derived paths are dropped, not errors", async () => {
+    const p = await upd([put("deepdive/_data/labs.json", "{}"), put("deepdive/_data/articles.json", "[1]")]);
+    expect(codes(p)).toEqual([]);
+    expect(p.skippedDerived).toEqual(["deepdive/_data/articles.json"]);
+  });
+});
+

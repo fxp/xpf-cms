@@ -10,6 +10,8 @@ export interface VerticalConfig {
   /** a generated tree published as one unit (graph/): no per-item meta, registry or listing; every file under `dirs` belongs to the
    *  publish, which is always an `update` of <type>/<name> (the name only labels the commit). */
   tree?: boolean;
+  /** individual files outside any directory, published as one unit with the rest of this (tree) vertical; also content paths for the CI gate */
+  files?: string[];
   body_format?: string;
   markdown_source?: "derived" | "authored" | "none";
   in_manifest?: boolean;

@@ -243,3 +243,42 @@ describe("publish service · graph tree", () => {
     expect(gh.refs.get("main")).toBe(head0);          // nothing was committed
   });
 });
+
+describe("publish service · federated registry row (roam)", () => {
+  const roamSeed = () => ({ ...seed(), "config/content-index.json": json({ counters: { roam: 11, howto: 3 }, items: [
+    { id: "0003", type: "howto", slug: "wiki-skill", date: "2026-09-03", title: "WikiSkill" },
+    { id: "0011", type: "roam", slug: "native-agent-focus-room", date: "2026-10-26", title: "x" }] }) });
+  const roamReq = (over: Partial<PublishRequest> = {}): PublishRequest => ({
+    ref: "roam/hardware-agent-bench", verb: "add", intent: { summary: "register", actor: "agent:claude-code" },
+    bundle: { changes: [put("config/content-index.json", json({ counters: { roam: 12, howto: 3 }, items: [
+      { id: "0003", type: "howto", slug: "wiki-skill", date: "2026-09-03", title: "WikiSkill" },
+      { id: "0011", type: "roam", slug: "native-agent-focus-room", date: "2026-10-26", title: "x" },
+      { id: "0012", type: "roam", slug: "hardware-agent-bench", date: "2026-11-11", title: "硬件 Agent 接入 Bench" }] }))] }, ...over });
+
+  it("commits just the registry row, signed, with no page files", async () => {
+    const gh = new FakeGithub(roamSeed());
+    const head0 = gh.refs.get("main")!;
+    const r = await publish(deps(gh), roamReq());
+    expect(r.status).toBe("committed");
+    if (r.status !== "committed") return;
+    const files = gh.files("main");
+    expect(JSON.parse(files["config/content-index.json"]).counters.roam).toBe(12);
+    expect(Object.keys(files).filter(f => f.startsWith("roam/"))).toEqual([]);
+    const c = gh.commits.get(r.commit_sha)!;
+    expect(c.message).toMatch(/^feat\(roam\): add hardware-agent-bench \[RM·0012\]/);
+    expect(/Xpf-Sig: ([0-9a-f]{64})/.exec(c.message)![1]).toBe(await signCommit("s3cret", c.tree, head0, "roam/hardware-agent-bench"));
+  });
+  it("merges onto a registry that moved: another publish's row is kept", async () => {
+    const gh = new FakeGithub(roamSeed());
+    gh.hookBeforeUpdateRef = () => gh.land("main", { "config/content-index.json": json({ counters: { roam: 11, howto: 4 }, items: [
+      { id: "0003", type: "howto", slug: "wiki-skill", date: "2026-09-03", title: "WikiSkill" },
+      { id: "0004", type: "howto", slug: "other", date: "2026-11-11", title: "Other" },
+      { id: "0011", type: "roam", slug: "native-agent-focus-room", date: "2026-10-26", title: "x" }] }) });
+    const r = await publish(deps(gh), roamReq());
+    expect(r.status).toBe("committed");
+    const reg = JSON.parse(gh.files("main")["config/content-index.json"]);
+    expect(reg.items.map((e: any) => e.slug).sort()).toEqual(["hardware-agent-bench", "native-agent-focus-room", "other", "wiki-skill"]);
+    expect(reg.counters).toMatchObject({ roam: 12, howto: 4 });
+  });
+});
+

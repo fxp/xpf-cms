@@ -14,6 +14,10 @@ describe("urlPathFor", () => {
     expect(urlPathFor(config, "buzzwords/109", "buzzwords/109")).toBe("/buzzwords/109/");
     expect(urlPathFor(config, "howto/skill-state", "howto/skill-state")).toBe("/howto/skill-state/");
   });
+  it("a tree is verified at its landing page, whatever its ref says", () => {
+    expect(urlPathFor(config, "graph/site", "graph")).toBe("/graph/");
+    expect(urlPathFor(config, "labs/lab-watch", null)).toBe("/deepdive/lab-watch/");
+  });
   it("falls back to the vertical prefix when the plan has no directory", () => {
     expect(urlPathFor(config, "howto/x", null)).toBe("/howto/x/");
   });

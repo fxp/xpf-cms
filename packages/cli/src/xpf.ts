@@ -90,8 +90,9 @@ async function runPublish(verb: Verb, ref: string, o: any) {
   const { type, slug } = parseRef(ref);
   if (!config.verticals[type]) { console.error(`unknown vertical "${type}"`); process.exitCode = 2; return; }
   const isTree = !!config.verticals[type].tree;           // graph/: one generated tree, no per-item directory
-  const itemDir: string | null = isTree ? null : (o.itemDir ?? resolveItemDirFs(root, config, type, slug));
-  const ownDir = itemDir ?? (type === "buzzwords" ? `buzzwords/${slug}` : `${config.verticals[type].dirs[0]}${isTree ? "" : `/${slug}`}`);
+  const isFederated = !!config.verticals[type].federated;  // roam: the pages live in another repo, only the registry row is published here
+  const itemDir: string | null = isTree || isFederated ? null : (o.itemDir ?? resolveItemDirFs(root, config, type, slug));
+  const ownDir = isFederated ? "" : itemDir ?? (type === "buzzwords" ? `buzzwords/${slug}` : `${config.verticals[type].dirs[0] ?? ""}${isTree ? "" : `/${slug}`}`);
   const owned = ownershipFor(config, type, ownDir, o.also ?? []);
   const keep = (p: string) => owned(p) || isDerived(config, p);
 
@@ -117,7 +118,7 @@ async function runPublish(verb: Verb, ref: string, o: any) {
   else {
     const errs = plan.findings.filter(f => f.severity === "error").length, warns = plan.findings.filter(f => f.severity === "warning").length;
     console.log(`${plan.ok ? "✓" : "✗"} ${verb} ${ref}${plan.id ? `  id ${plan.id}` : ""}   branch ${branch} (ahead ${ahead}, behind ${behind})   base ${bundle.base_sha.slice(0, 8)}`);
-    console.log(`  item dir: ${plan.itemDir ?? "(not found)"}`);
+    console.log(`  item dir: ${plan.itemDir ?? (isFederated ? "(none: its pages live in their own repo; only the registry row is published)" : isTree ? "(a fixed set of files, published as one unit)" : "(not found)")}`);
     console.log(`  ${plan.changes.length} file(s) to commit${plan.skippedDerived.length ? `, ${plan.skippedDerived.length} derived skipped` : ""}:`);
     for (const c of plan.changes) console.log(`    ${c.op === "delete" ? "delete" : "put   "} ${c.path}${c.op === "put" ? `  (${fmtSize(c.size)})` : ""}`);
     console.log(`  findings: ${errs} error(s), ${warns} warning(s)`);

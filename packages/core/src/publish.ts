@@ -54,9 +54,9 @@ export function ownershipFor(config: XpfConfig, type: string, itemDir: string, a
   const listing = new Set(v?.listing ?? []);
   const extras = new Set(also);
   // a tree (graph/) is one unit: everything under its directories is part of the publish; it has no registry rows or listing
-  if (v?.tree) { const dirs = v.dirs.map(d => d.replace(/\/$/, "") + "/"); return (p: string) => dirs.some(d => p.startsWith(d)) || extras.has(p); }
+  if (v?.tree) { const dirs = v.dirs.map(d => d.replace(/\/$/, "") + "/"), files = new Set(v.files ?? []); return (p: string) => dirs.some(d => p.startsWith(d)) || files.has(p) || extras.has(p); }
   const registry = v && (v.counter !== null || v.registered) ? config.publish.registry : null;
-  return (p: string) => p.startsWith(itemDir + "/") || p === registry || listing.has(p) || extras.has(p);
+  return (p: string) => (itemDir !== "" && p.startsWith(itemDir + "/")) || p === registry || listing.has(p) || extras.has(p);
 }
 /** Paths a bundle may carry that are neither owned nor an error: CI-generated, silently dropped. */
 export function isDerived(config: XpfConfig, p: string): boolean { return matchesAny(config.publish.derived, p); }
@@ -98,7 +98,7 @@ function planTree(bundle: Bundle, intent: PublishIntent, config: XpfConfig, vert
   const push = (severity: PublishFinding["severity"], code: string, message: string, path?: string) => findings.push({ severity, code, message, path });
   const { type, slug } = parseRef(intent.ref);
   if (intent.verb !== "update") { push("error", "tree-update-only", `${type} is a generated tree published as one unit: use update (xpf update ${type}/${slug}), not ${intent.verb}`); return empty(); }
-  const itemDir = vertical.dirs[0];
+  const itemDir = vertical.dirs[0] ?? "";
   const owned = ownershipFor(config, type, itemDir, intent.also);
   const changes: BundleChange[] = [];
   const skippedDerived: string[] = [];
@@ -106,10 +106,10 @@ function planTree(bundle: Bundle, intent: PublishIntent, config: XpfConfig, vert
     if (matchesAny(config.publish.forbidden, c.path)) { push("error", "forbidden-path", `${c.path} may never be part of a content publish (code and config are committed by hand)`, c.path); continue; }
     if (owned(c.path)) { changes.push(c); continue; }
     if (matchesAny(config.publish.derived, c.path)) { skippedDerived.push(c.path); continue; }
-    push("error", "unowned-path", `${c.path} is not under ${vertical.dirs.join(", ")}; add it with --also if intended`, c.path);
+    push("error", "unowned-path", `${c.path} is not part of ${type} (${[...vertical.dirs, ...(vertical.files ?? [])].join(", ")}); add it with --also if intended`, c.path);
   }
   if (skippedDerived.length) push("info", "derived-skipped", `${skippedDerived.length} derived file(s) not sent; CI regenerates them`);
-  if (!changes.length) push("error", "no-changes", `nothing to publish for ${intent.ref}: no file under ${vertical.dirs.join(", ")} changed`);
+  if (!changes.length) push("error", "no-changes", `nothing to publish for ${intent.ref}: none of ${[...vertical.dirs, ...(vertical.files ?? [])].join(", ")} changed`);
   const deletes = changes.filter(c => c.op === "delete").length;
   if (deletes > 200) push("warning", "tree-many-deletes", `${deletes} files are deleted; check that the generator ran on a complete checkout`);
   const total = changes.reduce((s, c) => s + (c.size ?? c.content?.length ?? 0), 0);
@@ -118,7 +118,7 @@ function planTree(bundle: Bundle, intent: PublishIntent, config: XpfConfig, vert
   const subject = `chore(${type}): refresh ${slug}${intent.calendar ? " [content-update]" : ""}`;
   const trailers = ["Published-via: xpf-cms", `Artifact: ${intent.ref}`, `Actor: ${intent.actor ?? "human"}`, ...(intent.derive ? ["Derive: pending"] : [])];
   const body = [intent.summary?.trim(), trailers.join("\n")].filter(Boolean).join("\n\n");
-  return { ok: !findings.some(f => f.severity === "error"), ref: intent.ref, type, slug, verb: intent.verb, itemDir, id: null, findings, changes, skippedDerived, commit: { subject, body, message: `${subject}\n\n${body}\n` } };
+  return { ok: !findings.some(f => f.severity === "error"), ref: intent.ref, type, slug, verb: intent.verb, itemDir: itemDir || null, id: null, findings, changes, skippedDerived, commit: { subject, body, message: `${subject}\n\n${body}\n` } };
 }
 
 export async function planPublish(base: FileView, bundle: Bundle, intent: PublishIntent, config: XpfConfig): Promise<PublishPlan> {
@@ -131,13 +131,16 @@ export async function planPublish(base: FileView, bundle: Bundle, intent: Publis
   const empty = (): PublishPlan => ({ ok: false, ref: intent.ref, type, slug, verb: intent.verb, itemDir: null, id: null, findings, changes: [], skippedDerived: [], commit: { subject: "", body: "", message: "" } });
 
   if (!vertical) { push("error", "unknown-type", `unknown vertical "${type}"`); return empty(); }
-  if (vertical.federated) { push("error", "federated-type", `${type} lives in its own repo; register it with roam_register instead`); return empty(); }
+  // A federated vertical (roam) keeps its pages in another repo. This repo only holds its registry row (id + counter), and that is
+  // all a publish of it carries. Without a counter there is nothing to register here at all.
+  const federated = !!vertical.federated;
+  if (federated && vertical.counter === null) { push("error", "federated-type", `${type} lives in its own repo and has no registry in this one; nothing to publish here`); return empty(); }
 
   if (vertical.tree) return planTree(bundle, intent, config, vertical, findings, empty);
 
   // --- item directory ---------------------------------------------------------------------------
-  let itemDir: string | null = intent.itemDir ?? null;
-  if (!itemDir) {
+  let itemDir: string | null = federated ? "" : (intent.itemDir ?? null);
+  if (!federated && !itemDir) {
     const candidates = type === "buzzwords" ? [`buzzwords/${slug}`] : vertical.dirs.map(d => `${d}/${slug}`);
     for (const view of intent.verb === "remove" ? [base, overlay] : [overlay, base]) {
       for (const c of candidates) {
@@ -146,18 +149,20 @@ export async function planPublish(base: FileView, bundle: Bundle, intent: Publis
       if (itemDir) break;
     }
   }
-  if (!itemDir) { push("error", "item-dir-missing", `no directory found for ${intent.ref} (looked in ${vertical.dirs.join(", ")}); pass --item-dir if it lives elsewhere`); return empty(); }
+  if (!federated && !itemDir) { push("error", "item-dir-missing", `no directory found for ${intent.ref} (looked in ${vertical.dirs.join(", ")}); pass --item-dir if it lives elsewhere`); return empty(); }
 
   // --- partition the bundle by ownership --------------------------------------------------------
   const counter = vertical.counter;
-  const owned = ownershipFor(config, type, itemDir, intent.also);
+  const owned = ownershipFor(config, type, itemDir ?? "", intent.also);
   const changes: BundleChange[] = [];
   const skippedDerived: string[] = [];
   for (const c of bundle.changes) {
     if (matchesAny(config.publish.forbidden, c.path)) { push("error", "forbidden-path", `${c.path} may never be part of a content publish`, c.path); continue; }
     if (owned(c.path)) { changes.push(c); continue; }
     if (matchesAny(config.publish.derived, c.path)) { skippedDerived.push(c.path); continue; }
-    push("error", "unowned-path", `${c.path} is not owned by ${intent.ref} (item dir, registry, ${type} listing); add it with --also if intended`, c.path);
+    push("error", "unowned-path", federated
+      ? `${c.path} is not part of a ${type} publish: its pages live in their own repo, only ${registryPath} is published here`
+      : `${c.path} is not owned by ${intent.ref} (item dir, registry, ${type} listing); add it with --also if intended`, c.path);
   }
   if (skippedDerived.length) push("info", "derived-skipped", `${skippedDerived.length} derived file(s) not sent; CI regenerates them`);
 
@@ -215,7 +220,9 @@ export async function planPublish(base: FileView, bundle: Bundle, intent: Publis
   }
 
   // --- item content ---------------------------------------------------------------------------
-  if (intent.verb !== "remove") {
+  if (federated) {
+    // the pages are not here, so there is no index.html / meta / listing to judge
+  } else if (intent.verb !== "remove") {
     const html = await overlay.read(`${itemDir}/index.html`);
     if (html === null && !(await overlay.exists(`${itemDir}/index.html`))) push("error", "index-html-missing", `${itemDir}/index.html does not exist`, `${itemDir}/index.html`);
     if (html && /冯晓平/.test(html)) push("error", "author-name", "页面里出现了“冯晓平”，作者名是“冯小平”", `${itemDir}/index.html`);
@@ -256,7 +263,7 @@ export async function planPublish(base: FileView, bundle: Bundle, intent: Publis
     }
   }
 
-  if (!changes.some(c => c.path !== registryPath)) push("error", "no-changes", `nothing to publish for ${intent.ref}: no owned file changed`);
+  if (federated ? !changes.length : !changes.some(c => c.path !== registryPath)) push("error", "no-changes", `nothing to publish for ${intent.ref}: ${federated ? `its ${registryPath} row is already as it should be` : "no owned file changed"}`);
   const total = changes.reduce((s, c) => s + (c.size ?? c.content?.length ?? 0), 0);
   if (total > 50 * 1024 * 1024) push("warning", "bundle-large", `bundle is ${(total / 1048576).toFixed(1)} MB; large media belongs in R2`);
 
@@ -268,5 +275,5 @@ export async function planPublish(base: FileView, bundle: Bundle, intent: Publis
   const body = [intent.summary?.trim(), trailers.join("\n")].filter(Boolean).join("\n\n");
   const message = `${subject}\n\n${body}\n`;
 
-  return { ok: !findings.some(f => f.severity === "error"), ref: intent.ref, type, slug, verb: intent.verb, itemDir, id, findings, changes, skippedDerived, commit: { subject, body, message } };
+  return { ok: !findings.some(f => f.severity === "error"), ref: intent.ref, type, slug, verb: intent.verb, itemDir: federated ? null : itemDir, id, findings, changes, skippedDerived, commit: { subject, body, message } };
 }
