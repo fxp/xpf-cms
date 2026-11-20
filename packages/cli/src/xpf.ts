@@ -129,7 +129,7 @@ async function runPublish(verb: Verb, ref: string, o: any) {
   if (!plan.ok) { process.exitCode = 1; return; }
 
   const intent = { summary: o.summary, actor: o.actor, calendar: !!o.calendar, also: o.also, itemDir: itemDir ?? undefined, placeholder: !!o.placeholder, derive: o.derive !== false };
-  const body = { ref, verb, intent, bundle: { base_sha: bundle.base_sha, changes: plan.changes }, branch: o.branch, dry_run: !!o.dryRun };
+  const body = { ref, verb, intent, bundle: { base_sha: bundle.base_sha, changes: plan.changes }, branch: o.branch, dry_run: !!o.dryRun, skip_graph_sync: o.graphSync === false || undefined };
   if (o.dryRun && !o.remote) return;                       // local-only dry run
   const cfg = loadClientConfig();
   if (!cfg.token) { console.error(`\nno API token: set $XPF_API_TOKEN or write it to ~/.config/xpf/token (chmod 600)`); process.exitCode = 2; return; }
@@ -138,10 +138,15 @@ async function runPublish(verb: Verb, ref: string, o: any) {
   if (res.status === 409) { console.error(`\n✗ conflict: ${j.message ?? j.error}\n  ${(j.conflicts ?? []).join("\n  ")}\n  fix: git pull --ff-only (stash first if needed), then re-run`); process.exitCode = 1; return; }
   if (res.status === 422) { console.error(`\n✗ rejected by ${cfg.api}:`); for (const f of j.plan?.findings ?? []) console.error(`    ${f.severity === "error" ? "✗" : "!"} ${f.code}: ${f.message}`); process.exitCode = 1; return; }
   if (res.status >= 400) { console.error(`\n✗ ${res.status} from ${cfg.api}: ${j.error ?? ""} ${j.detail ?? ""}`); process.exitCode = 1; return; }
-  if (o.dryRun) { console.log(`\n✓ server also accepts it (head ${String(j.head).slice(0, 8)}, branch ${j.branch})`); return; }
+  if (o.dryRun) {
+    console.log(`\n✓ server also accepts it (head ${String(j.head).slice(0, 8)}, branch ${j.branch})`);
+    if (j.graph_episode) console.log(`  EP.${j.graph_episode} will require Graph sync after deployment`);
+    return;
+  }
 
   console.log(`\n✓ committed ${String(j.commit_sha).slice(0, 8)} on ${j.branch}  ${j.commit_url}`);
   if (j.instance_id) console.log(`  pipeline ${j.instance_id} (deploy wait + verify + index): xpf status ${j.instance_id}`);
+  if (j.graph_episode && j.instance_id) console.log(`  EP.${j.graph_episode}: at awaiting_graph, sync from the vault and deploy graph/site; then run xpf graph-complete ${j.instance_id} <graph-instance>`);
   if (!o.branch && o.sync !== false) {
     const hadForeign = plan.findings.some(f => f.code === "registry-foreign-entries");
     const err = syncAfterPublish(root, plan.changes, hadForeign ? new Set([config.publish.registry]) : new Set());
@@ -160,6 +165,7 @@ for (const verb of ["publish", "update", "remove"] as const) {
     .option("--item-dir <dir>", "item directory when it is not <vertical dir>/<slug>")
     .option("--placeholder", "allow a non-published meta.status (howto 'coming soon')")
     .option("--no-derive", "omit the 'Derive: pending' trailer")
+    .option("--no-graph-sync", "skip the Graph follow-up for a presentation-only Buzzwords update")
     .option("--dry-run", "validate and show the plan; do not publish")
     .option("--remote", "with --dry-run: also ask the cms Worker to validate against the live branch head")
     .option("--branch <name>", "publish to this branch instead of main (smoke tests; skips local sync)")
@@ -168,11 +174,24 @@ for (const verb of ["publish", "update", "remove"] as const) {
     .action((ref, o) => runPublish(v, ref, o));
 }
 
-siteOpt(prog.command("status <instance>").description("status of a publish pipeline instance (deploy wait, verify, index)"))
+siteOpt(prog.command("status <instance>").description("status of a publish pipeline instance (deploy, verify, index, Graph follow-up)"))
   .action(async (instance) => {
     const cfg = loadClientConfig();
     const r = await fetch(`${cfg.api}/api/publish/${instance}`, { headers: { authorization: `Bearer ${cfg.token}` } });
     console.log(JSON.stringify(await r.json(), null, 2));
+  });
+
+prog.command("graph-complete <episode-instance> <graph-instance>")
+  .description("verify the deployed Graph update and close an episode's Graph follow-up")
+  .action(async (episodeInstance, graphInstance) => {
+    const cfg = loadClientConfig();
+    const res = await postJson(cfg, `/api/publish/${encodeURIComponent(episodeInstance)}/graph`, { graph_instance_id: graphInstance });
+    if (res.status >= 400) {
+      console.error(`✗ ${res.status}: ${res.json.error ?? "Graph completion failed"}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(JSON.stringify(res.json, null, 2));
   });
 
 prog.parseAsync();

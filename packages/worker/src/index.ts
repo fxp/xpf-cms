@@ -4,11 +4,12 @@ import type { XpfConfig } from "@xpf/core/edge";
 import verticals from "../../../config/verticals.json";
 import { GithubClient } from "./github.ts";
 import { publish, summarize, HttpError, type PublishRequest } from "./service.ts";
-import { audit, recordPublish } from "./db.ts";
+import { audit, completeEpisodeGraph, getPublish, recordPublish } from "./db.ts";
 import { timingSafeEqual } from "./sign.ts";
 import type { Env, PublishParams } from "./env.ts";
 import { urlPathFor } from "./urls.ts";
 import { fetchGraphPages } from "./graph.ts";
+import { AWAITING_GRAPH, episodeGraphForPublish, episodeNumber, verifyEpisodeGraph } from "./episode-graph.ts";
 
 export { PublishPipeline } from "./pipeline.ts";
 
@@ -32,7 +33,9 @@ const PublishBody = z.object({
   bundle: z.object({ base_sha: z.string().optional(), changes: z.array(Change).max(5000) }),
   branch: z.string().max(100).optional(),
   dry_run: z.boolean().optional(),
+  skip_graph_sync: z.boolean().optional(),
 });
+const GraphCompletionBody = z.object({ graph_instance_id: z.string().min(1).max(128) });
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -50,6 +53,9 @@ app.post("/api/publish", async c => {
   if (len > MAX_BODY) return c.json({ error: "bundle too large" }, 413);
   let body: z.infer<typeof PublishBody>;
   try { body = PublishBody.parse(await c.req.json()); } catch (e: any) { return c.json({ error: "bad request", detail: String(e?.message ?? e).slice(0, 600) }, 400); }
+  if (body.skip_graph_sync && (body.verb !== "update" || !episodeNumber(body.ref))) {
+    return c.json({ error: "skip_graph_sync only applies to Buzzwords updates" }, 400);
+  }
 
   const allowed = c.env.ALLOWED_BRANCHES.split(",").map(s => s.trim()).filter(Boolean);
   const gh = new GithubClient(c.env.GITHUB_TOKEN, c.env.GITHUB_REPO);
@@ -61,15 +67,18 @@ app.post("/api/publish", async c => {
     const res = await publish({ gh, config, signingSecret: c.env.XPF_SIGNING_SECRET, allowedBranches: allowed }, body as PublishRequest);
     if (res.status === "dry_run" || res.status === "rejected") {
       if (res.status === "rejected") log("rejected", { branch: res.branch, detail: res.plan.findings.filter(f => f.severity === "error").map(f => f.code).join(",") });
-      return c.json({ status: res.status, branch: res.branch, head: res.head, plan: summarize(res.plan), commit_message: res.plan.commit.message }, res.status === "rejected" ? 422 : 200);
+      const graphEpisode = res.status === "dry_run" ? episodeGraphForPublish(res.plan, res.branch === allowed[0], body.skip_graph_sync) : undefined;
+      return c.json({ status: res.status, branch: res.branch, head: res.head, plan: summarize(res.plan), commit_message: res.plan.commit.message, graph_episode: graphEpisode }, res.status === "rejected" ? 422 : 200);
     }
     if (res.status === "conflict") { log("conflict", { branch: res.branch, detail: res.conflicts.join(",") }); return c.json({ status: "conflict", conflicts: res.conflicts, head: res.head, message: res.message }, 409); }
 
     // committed: kick off the post-commit pipeline and record the audit row
     const urlPath = urlPathFor(config, body.ref, res.plan.itemDir);
+    const production = res.branch === allowed[0];
+    const graphEpisode = episodeGraphForPublish(res.plan, production, body.skip_graph_sync);
     const params: PublishParams = {
       ref: body.ref, verb: body.verb, branch: res.branch, commit_sha: res.commit_sha, actor, url_path: urlPath,
-      production: res.branch === allowed[0], id: res.plan.id, title: null,
+      production, id: res.plan.id, title: null, graph_episode: graphEpisode,
     };
     let instanceId: string | null = null;
     try {
@@ -80,7 +89,7 @@ app.post("/api/publish", async c => {
     log("committed", { commit_sha: res.commit_sha, branch: res.branch });
     return c.json({
       status: "committed", branch: res.branch, commit_sha: res.commit_sha, parent: res.parent, instance_id: instanceId,
-      commit_url: `https://github.com/${c.env.GITHUB_REPO}/commit/${res.commit_sha}`, plan: summarize(res.plan),
+      commit_url: `https://github.com/${c.env.GITHUB_REPO}/commit/${res.commit_sha}`, plan: summarize(res.plan), graph_episode: graphEpisode,
     }, 201);
   } catch (e: any) {
     if (e instanceof HttpError) { log("rejected", { detail: e.message }); return c.json({ error: e.message }, e.status as 400 | 403 | 409 | 500); }
@@ -90,9 +99,39 @@ app.post("/api/publish", async c => {
 });
 
 app.get("/api/publish/:id", async c => {
-  const row = await c.env.DB.prepare("select * from publishes where instance_id = ?").bind(c.req.param("id")).first();
+  const row = await getPublish(c.env, c.req.param("id"));
   if (!row) return c.json({ error: "not found" }, 404);
+  if (row.status === AWAITING_GRAPH) {
+    return c.json({ ...row, next_action: { type: "sync_episode_graph", episode: episodeNumber(row.ref), path: `/api/publish/${row.instance_id}/graph` } });
+  }
   return c.json(row);
+});
+
+app.post("/api/publish/:id/graph", async c => {
+  let graphId: string;
+  try { graphId = GraphCompletionBody.parse(await c.req.json()).graph_instance_id; }
+  catch { return c.json({ error: "graph_instance_id is required" }, 400); }
+
+  const [episode, graph] = await Promise.all([getPublish(c.env, c.req.param("id")), getPublish(c.env, graphId)]);
+  if (!episode || !graph) return c.json({ error: "episode or Graph publish instance not found" }, 404);
+  const ep = episodeNumber(episode.ref);
+  const production = c.env.ALLOWED_BRANCHES.split(",")[0].trim();
+  if (!ep || episode.verb === "remove" || episode.branch !== production || graph.ref !== "graph/site" || graph.verb !== "update" || graph.branch !== production) {
+    return c.json({ error: "expected a production Buzzwords publish and a production graph/site update" }, 409);
+  }
+  if (episode.status !== AWAITING_GRAPH && episode.status !== "done") return c.json({ error: "episode is not ready for Graph sync" }, 409);
+  if (graph.status !== "done") return c.json({ error: "Graph deployment is not done" }, 409);
+  const gh = new GithubClient(c.env.GITHUB_TOKEN, c.env.GITHUB_REPO);
+  if (episode.commit_sha === graph.commit_sha || !(await gh.isAtOrAhead(episode.commit_sha, graph.commit_sha))) {
+    return c.json({ error: "Graph revision must follow the episode revision" }, 409);
+  }
+  try { await verifyEpisodeGraph(c.env.SITE_BASE, ep, graph.commit_sha); }
+  catch (e) { return c.json({ error: String(e instanceof Error ? e.message : e).slice(0, 500) }, 422); }
+
+  if (await completeEpisodeGraph(c.env, episode.instance_id)) {
+    c.executionCtx.waitUntil(audit(c.env, { verb: episode.verb, ref: episode.ref, branch: episode.branch, commit_sha: episode.commit_sha, status: "graph_completed", detail: graph.instance_id }));
+  }
+  return c.json({ status: "done", instance_id: episode.instance_id, graph_instance_id: graph.instance_id });
 });
 
 app.get("/api/items", async c => {

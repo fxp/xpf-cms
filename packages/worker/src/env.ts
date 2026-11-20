@@ -11,6 +11,8 @@ export interface PublishParams {
   production: boolean;
   id: string | null;
   title: string | null;
+  /** A published episode whose Graph import must be completed by the vault host. */
+  graph_episode?: string;
 }
 
 export interface Env {

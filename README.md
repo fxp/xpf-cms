@@ -16,6 +16,20 @@ Skills use these through `~/.claude/skills/cms-publish` (clean sparse workspace 
 
 Packages: `core` (schema v2, site loader, validator, HTML→Markdown, llms generators) · `admin` (dashboard) · `cli` (`xpf`). Config: `config/verticals.json`.
 
+## Buzzwords publishing and Graph
+
+On the production branch, a new episode or an update that sends its `index.html` moves to `awaiting_graph` after the episode deploys and passes the site check. `xpf status <episode-instance>` reports the episode and the next action.
+
+For a presentation-only episode update with no changes to Graph inputs, pass `--no-graph-sync` to `xpf update`. This option applies only to Buzzwords updates.
+
+Use the `buzzwords-episode` skill on the Obsidian host to import the models and deployed episode into Graph, then publish `graph/site` through CMS. Once the Graph instance is `done`, close the episode's follow-up with:
+
+```bash
+pnpm xpf graph-complete <episode-instance> <graph-instance>
+```
+
+CMS checks that the Graph commit follows the episode commit and that the public episode entity, model query and mention index are available. A failed check leaves the episode at `awaiting_graph` so completion can be retried independently of publishing the episode.
+
 ## Dashboard
 
 Live at **https://cms.xiaopingfeng.com**, gated by Auth0 login (`packages/dashboard-worker`) — see that package's README for the OAuth flow and the one manual step still needed in the Auth0 dashboard (Allowed Callback URLs) before login actually completes. Rebuild + redeploy:

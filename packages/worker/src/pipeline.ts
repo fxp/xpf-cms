@@ -1,11 +1,12 @@
 // Post-commit pipeline (Cloudflare Workflow): wait for the production deploy of the commit, verify the
-// page is live, then index it. The commit itself is already on the branch by the time this starts —
+// page is live, then index it. Eligible episodes await the vault-side Graph import. The commit is already on the branch —
 // this only confirms and records. No auto-revert on failure: it is marked failed and surfaced instead.
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import { GithubClient } from "./github.ts";
 import { setPublishStatus, upsertItem } from "./db.ts";
 import { verifyLive } from "./verify.ts";
 import { deployVerdict, type DeployVerdict } from "./deploy-wait.ts";
+import { AWAITING_GRAPH } from "./episode-graph.ts";
 import type { Env, PublishParams } from "./env.ts";
 
 const POLL_SECONDS = 30;
@@ -45,7 +46,8 @@ export class PublishPipeline extends WorkflowEntrypoint<Env, PublishParams> {
           await upsertItem(this.env, { ref: p.ref, type, slug: rest.join("/"), id: p.id, title: p.title, state: p.verb === "remove" ? "removed" : "published", url_path: p.url_path, last_commit: p.commit_sha });
         });
       }
-      await step.do("status:done", () => setPublishStatus(this.env, id, "done"));
+      const status = p.production && p.graph_episode ? AWAITING_GRAPH : "done";
+      await step.do(`status:${status}`, () => setPublishStatus(this.env, id, status));
     } catch (e: any) {
       await step.do("status:failed", () => setPublishStatus(this.env, id, "failed", String(e?.message ?? e).slice(0, 500)));
       throw e;
